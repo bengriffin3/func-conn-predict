@@ -8,7 +8,7 @@ The scripts are as follows:
 - **00_train_hmm_chunk_group.py: Train a HMM on HCP time series data, which had been divided up into user specified chunks of time.
 - **01_static_netmats_prepaaration.py: Generate a 'ground truth' netmat based on the whole time series.
 - **02_netmats_edge_prediction.py: Predict the ground truth netmats (one edge at a time) using user specified features.
-
+- **03_combine_edge_predictions.py: Combine the predictions from script 02...
 
 Note that the scripts in `job_submission` can be used to submit jobs to the BMRC cluster. 
 
