@@ -23,8 +23,8 @@ Icon[^M]
 *.egg-info
 
 # Project files
-archive/*
-data/*
-job_submission/logs/*
-results/*
-job_submission/job.sh
+nets_predict/archive/*
+nets_predict/data/*
+nets_predict/job_submission/logs/*
+nets_predict/results/*
+nets_predict/job_submission/job.sh
