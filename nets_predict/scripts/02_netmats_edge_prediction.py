@@ -54,7 +54,7 @@ HMMClass = HiddenMarkovModelClass()
 PartialCorrClass = PartialCorrelationClass()
 
 #%% Set directories
-proj_dir = "/well/win-fmrib-analysis/users/psz102/nets_project/nets_predict"
+proj_dir = "/well/win-fmrib-analysis/users/psz102/nets-predict/nets_predict"
 results_dir = f"{proj_dir}/results/ICA_{n_ICs}"
 chunk_save_dir = f"{results_dir}/edge_prediction/{n_chunk}_chunks"
 os.makedirs(chunk_save_dir, exist_ok=True)
@@ -77,7 +77,7 @@ else:
         hmm_features_dict = pickle.load(file)
 
 
-for edge in range(network_edge, network_edge+10):
+for edge in range(network_edge, network_edge+5):
     single_edge_prediction = f"{chunk_save_dir}/edge_prediction_{edge}_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{features_to_use}_states_{n_states}_model_mean_{model_mean}.npz"
     joint_edge_prediction = f"{chunk_save_dir}/combined/edge_prediction_all_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{features_to_use}_states_{n_states}_model_mean_{model_mean}.npz"
     if os.path.isfile(single_edge_prediction) or os.path.isfile(joint_edge_prediction):

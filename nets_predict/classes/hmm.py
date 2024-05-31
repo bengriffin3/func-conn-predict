@@ -129,7 +129,7 @@ class HiddenMarkovModelClass:
             feat_means = means.reshape(means.shape[0], -1)
             feat_tpm = trans_prob.reshape(trans_prob.shape[0], -1)
             feat_ss = self.reshape_summary_stats(fo, intv, lt, sr)
-            feat = np.concatenate([feat_icovs, feat_covs, feat_means, feat_tpm, feat_ss],axis=1)        
+            feat = np.concatenate([feat_icovs, feat_covs, feat_means, feat_tpm, feat_ss],axis=1)
 
         return feat
     

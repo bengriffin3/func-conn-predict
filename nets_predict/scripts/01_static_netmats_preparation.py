@@ -40,7 +40,7 @@ n_edge = int((n_ICs * (n_ICs - 1))/2)
 PartialCorrClass = PartialCorrelationClass()
 
 #%% Set directories
-proj_dir = "/well/win-fmrib-analysis/users/psz102/nets_project/nets_predict"
+proj_dir = "/well/win-fmrib-analysis/users/psz102/nets-predict/nets_predict"
 static_dir = f"{proj_dir}/results/ICA_{n_ICs}/static"
 ground_truth_dir = f"{proj_dir}/results/ICA_{n_ICs}/ground_truth"
 os.makedirs(static_dir, exist_ok=True)
@@ -90,8 +90,8 @@ np.save(f"{static_dir}/partial_correlations_{n_chunks}_chunks.npy", partial_corr
 np.save(f"{static_dir}/full_covariances_{n_chunks}_chunks.npy", full_covariances_chunk)
 
 # save edge accuracies
-np.savez(f"{save_dir}/edge_prediction_all_nm_icov_pm_icov_chunks_{n_chunks}_features_used_actual.npz", accuracy_per_edge=accuracy_per_edge_nm_icov_pm_icov)
-np.savez(f"{save_dir}/edge_prediction_all_nm_cov_pm_icov_chunks_{n_chunks}_features_used_actual.npz", accuracy_per_edge=accuracy_per_edge_nm_cov_pm_icov)
-np.savez(f"{save_dir}/edge_prediction_all_nm_icov_pm_cov_chunks_{n_chunks}_features_used_actual.npz", accuracy_per_edge=accuracy_per_edge_nm_icov_pm_cov)
-np.savez(f"{save_dir}/edge_prediction_all_nm_cov_pm_cov_chunks_{n_chunks}_features_used_actual.npz", accuracy_per_edge=accuracy_per_edge_nm_cov_pm_cov)
+np.savez(f"{save_dir}/edge_prediction_all_nm_icov_pm_icov_chunks_{n_chunks}_features_used_actual.npz", accuracy_per_edge=accuracy_per_edge_nm_icov_pm_icov, netmats_flatten = partial_correlations_chunk_flatten.transpose(1, 0, 2))
+np.savez(f"{save_dir}/edge_prediction_all_nm_cov_pm_icov_chunks_{n_chunks}_features_used_actual.npz", accuracy_per_edge=accuracy_per_edge_nm_cov_pm_icov, netmats_flatten = full_covariances_chunk_flatten.transpose(1, 0, 2))
+np.savez(f"{save_dir}/edge_prediction_all_nm_icov_pm_cov_chunks_{n_chunks}_features_used_actual.npz", accuracy_per_edge=accuracy_per_edge_nm_icov_pm_cov, netmats_flatten = partial_correlations_chunk_flatten.transpose(1, 0, 2))
+np.savez(f"{save_dir}/edge_prediction_all_nm_cov_pm_cov_chunks_{n_chunks}_features_used_actual.npz", accuracy_per_edge=accuracy_per_edge_nm_cov_pm_cov, netmats_flatten = full_covariances_chunk_flatten.transpose(1, 0, 2))
 

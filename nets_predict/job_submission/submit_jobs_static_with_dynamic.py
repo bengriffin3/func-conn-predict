@@ -14,7 +14,8 @@ def write_job_script(n_ICs, network_edge, network_matrix, prediction_matrix, n_c
         file.write(f"#SBATCH -o logs/{name}.out\n")
         file.write(f"#SBATCH -e logs/{name}.err\n")
         file.write(f"#SBATCH -p {queue}\n")
-        file.write("source activate osld\n")
+        #file.write("source activate osld\n")
+        file.write("source activate venv_nets\n")
 
         if features_to_use=='static':
             file.write(f"python ../scripts/02_netmats_edge_prediction.py {n_ICs} {network_edge} {network_matrix} {prediction_matrix} {n_chunks} {features_to_use} \n")
@@ -35,14 +36,14 @@ run = 1
 n_states = 8
 trans_prob_diag = 10
 #dynamic_add = 'fc'
-feature_vec =  ['tpms_ss_only','tpms_ss','static', 'means', 'fc', 'pc'] #, 'all']
+feature_vec =  ['pc'] #, 'all']
 model_mean = 1
 
 ####### input model mean if necessary
 
 for n_ICs in n_ICs_vec:
     n_edges =  int((n_ICs*(n_ICs-1))/2)
-    network_edge_range = range(0, n_edges, 10) #range(0, n_edges, 5)
+    network_edge_range = range(0, n_edges, 5) #range(0, n_edges, 5)
     for features_to_use in feature_vec: 
         for network_edge in network_edge_range:
             for n_chunks in n_chunks_vec:

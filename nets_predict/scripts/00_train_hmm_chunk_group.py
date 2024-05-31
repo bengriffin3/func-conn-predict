@@ -45,7 +45,7 @@ use_group_model = args.use_group_model
 #%% Load data
 
 # Load the list of file names created by 1_find_data_files.py
-proj_dir = "/well/win-fmrib-analysis/users/psz102/nets_project/nets_predict"
+proj_dir = "/well/win-fmrib-analysis/users/psz102/nets-predict/nets_predict"
 with open(os.path.join(proj_dir, f"data/data_files_ICA{n_ICs}.txt"), "r") as file: # "r" means open in 'read' mode
     inputs = file.read().split("\n")
 

@@ -31,7 +31,7 @@ n_states = args.n_states
 network_matrix = args.network_matrix
 prediction_matrix = args.prediction_matrix
 
-proj_dir = '/gpfs3/well/win-fmrib-analysis/users/psz102/nets_project/nets_predict'
+proj_dir = '/gpfs3/well/win-fmrib-analysis/users/psz102/nets-predict/nets_predict'
 load_dir = f"{proj_dir}/results/ICA_{n_ICs}/edge_prediction/{n_chunk}_chunks"
 save_dir = f"{load_dir}/combined"
 os.makedirs(save_dir, exist_ok=True)
