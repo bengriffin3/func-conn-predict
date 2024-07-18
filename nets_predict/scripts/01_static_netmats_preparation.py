@@ -68,13 +68,9 @@ full_covariances_chunk_flatten = PartialCorrClass.extract_upper_off_main_diag(fu
 
 # determine accuracy of the chunked up partial corr vs ground truth partial corr
 accuracy_per_edge_nm_icov_pm_icov = np.zeros((n_chunks, n_edge))
-accuracy_per_edge_nm_icov_pm_icov[:] = np.nan
 accuracy_per_edge_nm_cov_pm_icov = np.zeros((n_chunks, n_edge))
-accuracy_per_edge_nm_cov_pm_icov[:] = np.nan
 accuracy_per_edge_nm_icov_pm_cov = np.zeros((n_chunks, n_edge))
-accuracy_per_edge_nm_icov_pm_cov[:] = np.nan
 accuracy_per_edge_nm_cov_pm_cov = np.zeros((n_chunks, n_edge))
-accuracy_per_edge_nm_cov_pm_cov[:] = np.nan
 
 for edge in trange(n_edge, desc='Getting accuracy per edge:'):
     for chunk in range(n_chunks):
