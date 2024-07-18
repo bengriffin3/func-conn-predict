@@ -22,7 +22,7 @@ import numpy as np
 from scipy.stats import pearsonr
 from tqdm import trange
 
-#%% Parse command line arguments and intialise classes
+#%% Parse command line arguments
 parser = argparse.ArgumentParser()
 parser.add_argument("n_ICs", type=int, help='No. IC components of brain parcellation', choices = [25, 50])
 parser.add_argument("n_chunks", type=int, help='How many chunks do you want to divide the time series into?')
@@ -53,7 +53,7 @@ with open(f"{proj_dir}/data/data_files_ICA{n_ICs}.txt", "r") as file:
 data = Data(inputs, load_memmaps=False, n_jobs=8)
 data.standardize()
 
-# develop and ground truth matrix
+# develop and save ground truth matrix
 ground_truth_matrix_partial, ground_truth_matrix_full = PartialCorrClass.get_ground_truth_matrix(data, n_session)
 np.save(f"{ground_truth_dir}/ground_truth_partial_mean_{n_session}_sessions.npy", ground_truth_matrix_partial)
 np.save(f"{ground_truth_dir}/ground_truth_full_mean_{n_session}_sessions.npy", ground_truth_matrix_full)

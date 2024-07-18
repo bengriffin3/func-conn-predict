@@ -1,16 +1,26 @@
+""" Given a netmats from a chunk of the time series of HCP subjects, a previous script has generated a prediction for a specific edge
+    of a netmats for the entire length of the time series (i.e., the 'ground truth' netmats)
+
+    This script now combines all the edges for a given netmats.
+
+    For example, for a 25 x 25 netmats, we combine the unique edges = n(n-1)/2 (note the diagonal of a partial correlation matrix are 0
+    so we don't need to calcalate them.
+
+    Note that while some of the edges work instantly, some take up to 20+ mins, which is why we do 1 edge at a time rather than putting them in a for loop.
+
+"""
 #%% Import modules
 import os
 import numpy as np
 import argparse
 from nets_predict.classes.hmm import HiddenMarkovModelClass
-import logging
 from tqdm import trange
 
+# intialise class
 HMMClass = HiddenMarkovModelClass()
-_logger = logging.getLogger("Chunk_project")
 
 
-#%% Parse command line arguments and intialise classes
+#%% Parse command line arguments
 parser = argparse.ArgumentParser()
 parser.add_argument("n_ICs", type=int, help='No. IC components of brain parcellation', choices = [25, 50])
 parser.add_argument("n_chunk", type=int, help='How many chunks was the data divided into?', choices = [4, 12])
@@ -31,19 +41,18 @@ n_states = args.n_states
 network_matrix = args.network_matrix
 prediction_matrix = args.prediction_matrix
 
+#%% Set directories
 proj_dir = '/gpfs3/well/win-fmrib-analysis/users/psz102/nets-predict/nets_predict'
 load_dir = f"{proj_dir}/results/ICA_{n_ICs}/edge_prediction/{n_chunk}_chunks"
 save_dir = f"{load_dir}/combined"
 os.makedirs(save_dir, exist_ok=True)
 
 #%% Calculating stats for dynamic predictions
-
 model_mean = True
 n_edge = int((n_ICs*(n_ICs-1))/2)
-
-
 n_feat = HMMClass.determine_n_features(feature_type, n_ICs, n_states)
 
+# initialise arrays
 alpha = np.zeros((n_chunk, n_fold, n_edge))
 alpha[:] = np.nan
 l1_ratio = np.zeros((n_chunk, n_fold, n_edge))

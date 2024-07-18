@@ -18,11 +18,12 @@ import logging
 from tqdm import trange
 import pickle
 
+#%% Initialise classes
 PartialCorrClass = PartialCorrelationClass()
 HMMClass = HiddenMarkovModelClass()
 _logger = logging.getLogger("Chunk_project")
 
-#%% Parse command line arguments and intialise classes
+#%% Parse command line arguments 
 parser = argparse.ArgumentParser()
 parser.add_argument("n_ICs", type=int, help='No. IC components for brain parcellation', choices = [25, 50])
 parser.add_argument("n_states", type=int, help='No. HMM states', choices = [3, 6, 8, 9, 10, 12, 15])
@@ -54,9 +55,10 @@ data = Data(inputs, load_memmaps=False, n_jobs=8)
 
 # Create directory for results
 results_dir = f"{proj_dir}/results/ICA_{n_ICs}/dynamic/run{run:02d}_states{n_states:02d}_DD{trans_prob_diag:06d}_model_mean_{model_mean}/{n_chunks}_chunks"
-results_dir_full = f"{proj_dir}/results/ICA_{n_ICs}/dynamic/run{run:02d}_states{n_states:02d}_DD{trans_prob_diag:06d}_model_mean_{model_mean}/1_chunks"
+results_dir_full = f"{results_dir}/1_chunks"
 os.makedirs(results_dir, exist_ok=True)
 
+# Check if HMMs have already been made
 if use_group_model:
     if os.path.isfile(f"{results_dir_full}/hmm_features_{n_chunks}_chunks.pickle"):
         print('exiting programme since HMM already developed')
@@ -69,7 +71,7 @@ else:
 # Prepare data
 data.standardize()
 
-#%% Build model
+#%% Initialise model
 initial_trans_prob = HMMClass.intialise_trans_prob(trans_prob_diag, n_states)
 
 config = Config(
@@ -123,10 +125,11 @@ for chunk in trange(n_chunks, desc='Chunks'):
         else: 
             model = load(f"{results_dir}/model_chunk_{chunk}")
 
+    # organise the model parameters into a dictionary for selected chunk
     HMM_params_dictionary = HMMClass.get_inferred_parameters(model, time_series)
-
     hmm_features_per_chunk.append(HMM_params_dictionary)
 
+# save model
 if use_group_model:    
     with open(os.path.join(results_dir_full, f"hmm_features_{n_chunks}_chunks.pickle"), 'wb') as file:
         pickle.dump(hmm_features_per_chunk, file)

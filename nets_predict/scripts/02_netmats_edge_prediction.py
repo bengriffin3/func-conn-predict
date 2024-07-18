@@ -1,7 +1,7 @@
 """ Given a netmats from a chunk of the time series of HCP subjects, this script generated a prediction for a specific edge
     of a netmats for the entire length of the time series (i.e., the 'ground truth' netmats)
 
-    Note that while some of the edges work instantly, some take up to 20+ mins, which is why we do 1 edge at a time rather than putting them in a foor loop.
+    Note that while some of the edges work instantly, some take up to 20+ mins, which is why we do 1 edge at a time rather than putting them in a for loop.
 
 """
 #%% import modules
@@ -48,7 +48,7 @@ model_mean=args.model_mean
 
 n_folds = args.n_folds
 
-# initialise logger and class to perform partial correlation analysis
+# initialise logger and classes
 logger = logging.getLogger("Chunk_project")
 HMMClass = HiddenMarkovModelClass()
 PartialCorrClass = PartialCorrelationClass()
