@@ -108,9 +108,12 @@ class HiddenMarkovModelClass:
         intv = hmm_features_dict['intv_chunk']
         lt = hmm_features_dict['lt_chunk']
         sr = hmm_features_dict['sr_chunk']
+        weighted_covs =  hmm_features_dict['weighted_covs_chunk']
 
         if dynamic_add=='fc':
             feat = self.reshape_cov_features(covs)
+        elif dynamic_add=='weighted_covs':
+            feat = self.reshape_cov_features(weighted_covs)
         elif dynamic_add=='pc':
             #feat = self.reshape_cov_features(icovs)
             icovs_off_diag = PartialCorrClass.extract_upper_off_main_diag(icovs)
@@ -173,9 +176,9 @@ class HiddenMarkovModelClass:
 
         # change to MATCH and CASE
         match features_to_use:
-            case "fc":
+            case "fc" | "weighted_covs":
                 n_fc = n_states * n_upper_diag
-                n_features = int(n_fc + n_static_features) # add 1 to n_states for the statics    
+                n_features = int(n_fc + n_static_features) # add 1 to n_states for the statics
             case "pc":
                 n_pc = n_states * n_static_features # also ignore main diagonal for PC here
                 n_features = int(n_pc + n_static_features)
@@ -241,6 +244,10 @@ class HiddenMarkovModelClass:
         means_dual, covs_dual = model.dual_estimation(data, alpha)
         trans_prob_chunk = calc_trans_prob_matrix(stc, n_states=n_states)
 
+
+        # Perform the multiplication using broadcasting
+        weighted_covs_dual = fo[:, :, np.newaxis, np.newaxis] * covs_dual
+
         # calculate partial correlations 
         icovs_chunk = np.zeros((n_sub, n_states, n_ICs, n_ICs))
         for sub in range(n_sub):
@@ -256,8 +263,10 @@ class HiddenMarkovModelClass:
             "means_chunk": means_dual,
             "covs_chunk": covs_dual,
             "trans_prob_chunk": trans_prob_chunk,
-            "icovs_chunk": icovs_chunk
+            "icovs_chunk": icovs_chunk,
+            "weighted_covs_chunk": weighted_covs_dual
         }
+        
     
     def get_predictor_features(self, netmats, hmm_features_dict, features_to_use):
 
