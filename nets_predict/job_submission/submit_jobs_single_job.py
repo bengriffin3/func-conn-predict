@@ -14,7 +14,8 @@ def write_job_script(n_ICs, network_edge, network_matrix, prediction_matrix, n_c
         file.write(f"#SBATCH -o logs/{name}.out\n")
         file.write(f"#SBATCH -e logs/{name}.err\n")
         file.write(f"#SBATCH -p {queue}\n")
-        file.write("source activate osld\n")
+        #file.write("source activate osld\n")
+        file.write("source activate venv_nets\n")
         file.write(f"../python CH_04_netmats_edge_prediction.py {n_ICs} {network_edge} {network_matrix} {prediction_matrix} {n_chunks} \n")
 
 

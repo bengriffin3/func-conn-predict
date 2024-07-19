@@ -17,6 +17,8 @@ from nets_predict.classes.hmm import HiddenMarkovModelClass
 import pickle
 from nets_predict.classes.partial_correlation import PartialCorrelationClass
 
+print("WHY IS THIS SCRIPT DIFFERENT TO THE OTHER ONE \n \n \n \n \n ")
+
 #%% Parse command line arguments
 parser = argparse.ArgumentParser()
 parser.add_argument("n_ICs", type = int, help = 'No. ICs of parcellation', choices = [25, 50])
@@ -129,10 +131,12 @@ for edge in range(network_edge, network_edge+5):
     kf = KFold(n_splits=n_folds)
 
     for i in trange(n_chunk, desc='Chunks'):
-        # print(f"{chunk_save_dir}/edge_prediction_{edge}_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{features_to_use}_states_{n_states}_model_mean_{model_mean}_chunk{i}.npz") 
-        # if os.path.isfile(f"{chunk_save_dir}/edge_prediction_{edge}_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{features_to_use}_states_{n_states}_model_mean_{model_mean}_chunk{i}.npz"):
-        #     np.load(f"{chunk_save_dir}/edge_prediction_{edge}_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{features_to_use}_states_{n_states}_model_mean_{model_mean}_chunk{i}.npz")
-        #     continue
+        print(f"{chunk_save_dir}/edge_prediction_{edge}_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{features_to_use}_states_{n_states}_model_mean_{model_mean}_chunk{i}.npz") 
+        print(f"Checking if chunk {i} has been run before...")
+        if os.path.isfile(f"{chunk_save_dir}/edge_prediction_{edge}_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{features_to_use}_states_{n_states}_model_mean_{model_mean}_chunk{i}.npz"):
+            print(f"Chunk {i} already run, continuing to next chunk... \n \n \n")
+            np.load(f"{chunk_save_dir}/edge_prediction_{edge}_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{features_to_use}_states_{n_states}_model_mean_{model_mean}_chunk{i}.npz")
+            continue
 
         X = HMMClass.get_predictor_features(netmats[:,i,:,:], hmm_features_dict[i], features_to_use) 
 
