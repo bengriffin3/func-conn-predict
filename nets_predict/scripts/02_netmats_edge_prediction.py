@@ -16,8 +16,11 @@ from tqdm import trange
 from nets_predict.classes.hmm import HiddenMarkovModelClass
 import pickle
 from nets_predict.classes.partial_correlation import PartialCorrelationClass
+from sklearn.decomposition import PCA
+import time
 
 print("WHY IS THIS SCRIPT DIFFERENT TO THE OTHER ONE \n \n \n \n \n ")
+start_time = time.time()
 
 #%% Parse command line arguments
 parser = argparse.ArgumentParser()
@@ -26,12 +29,13 @@ parser.add_argument("network_edge", type = int, help = 'Network edge to predict'
 parser.add_argument("network_matrix", type = str, help = 'Netmats matrix to use as predictor', choices = ['icov', 'cov'])
 parser.add_argument("prediction_matrix", type = str, help = 'Netmats matrix to predict', choices = ['icov', 'cov'])
 parser.add_argument("n_chunk", type = int, help = 'No. chunks data has been split in to')
-parser.add_argument("features_to_use", type = str, help = 'Which dynamic params (if any) shall we also use to generate predictions?', choices = ['static','fc','pc','means','tpms_ss', 'all', 'tpms_ss_only'])
+parser.add_argument("features_to_use", type = str, help = 'Which dynamic params (if any) shall we also use to generate predictions?', choices = ['static','fc','pc','means','tpms_ss', 'all', 'tpms_ss_only', 'weighted_covs', 'weighted_icovs'])
 parser.add_argument("--run", type = int, default = 1)
 parser.add_argument("--n_states", type = int, default = 0, choices = [3,6,9,12,15,8,10])
 parser.add_argument("--trans_prob_diag", type = int, default = 10)
 parser.add_argument('--model_mean', default = True, action=argparse.BooleanOptionalAction, help = 'add flag --model_mean to model the mean, and add flag --no-model_mean to not model the mean') 
 parser.add_argument("--n_folds", type = int, default = 10)
+parser.add_argument('--pca', default = False, action=argparse.BooleanOptionalAction, help = 'add flag --pca to perform PCA on feature matrix, and add flag --no-pca to not') 
 
 args = parser.parse_args()
 n_ICs = args.n_ICs
@@ -47,6 +51,7 @@ run=args.run
 n_states=args.n_states
 trans_prob_diag=args.trans_prob_diag
 model_mean=args.model_mean
+pca=args.pca
 
 n_folds = args.n_folds
 
@@ -79,7 +84,7 @@ else:
         hmm_features_dict = pickle.load(file)
 
 
-for edge in range(network_edge, network_edge+5):
+for edge in range(network_edge, network_edge+2):
     single_edge_prediction = f"{chunk_save_dir}/edge_prediction_{edge}_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{features_to_use}_states_{n_states}_model_mean_{model_mean}.npz"
     joint_edge_prediction = f"{chunk_save_dir}/combined/edge_prediction_all_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{features_to_use}_states_{n_states}_model_mean_{model_mean}.npz"
     if os.path.isfile(single_edge_prediction) or os.path.isfile(joint_edge_prediction):
@@ -119,7 +124,9 @@ for edge in range(network_edge, network_edge+5):
     beta = np.zeros((n_chunk,n_folds,n_features))
     beta[:] = np.nan
     corr_y = np.zeros((n_chunk,n_folds))
-    corr_y[:] = np.nan 
+    corr_y[:] = np.nan
+    corr_y_train = np.zeros((n_chunk,n_folds))
+    corr_y_train[:] = np.nan 
     predict_y_all = np.zeros((n_chunk,n_sub))
     predict_y_all[:] = np.nan
     prediction_accuracy_chunk = np.zeros((n_chunk, 1))
@@ -151,6 +158,16 @@ for edge in range(network_edge, network_edge+5):
 
             # standardise X
             X_train, X_test = HMMClass.standardise_train_apply_to_test(X_train, X_test)
+            
+            # perform PCA
+            n_features_dynamic = n_features - n_ICs*(n_ICs-1)/2
+            if pca and n_features_dynamic > n_states*n_ICs:
+                X_train, X_test, pca_model = HMMClass.pca_dynamic_only(X_train, X_test, n_ICs)
+                n_features = X_train.shape[1]
+            else:
+                pca=0
+                pca_model = 0
+
 
             # centre response
             my = np.mean(y_train)
@@ -162,24 +179,26 @@ for edge in range(network_edge, network_edge+5):
             # save chosen configuration
             alpha[i,fold] = model.alpha_
             l1_ratio[i,fold] = model.l1_ratio_
-            beta[i,fold,:] = model.coef_
+            beta[i,fold,0:n_features] = model.coef_
 
             #return correlation
+            y_pred_train, correlation_train = HMMClass.evaluate_model(model, X_train, y_train, my)
             y_pred, correlation = HMMClass.evaluate_model(model, X_test, y_test, my)
             predict_y_all[i,test_index] = y_pred
             corr_y[i,fold] = correlation
+            corr_y_train[i,fold] = correlation_train
             
             print(corr_y[i,fold])
 
         prediction_accuracy_chunk[i] = pearsonr(np.squeeze(predict_y_all[i,:]), np.squeeze(y))[0]
 
-
+        print("--- %s seconds ---" % (time.time() - start_time))
         chunk_file_name = f"{chunk_save_dir}/edge_prediction_{edge}_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{features_to_use}_states_{n_states}_model_mean_{model_mean}_chunk{i}.npz"
-        np.savez(chunk_file_name, alpha=alpha, l1_ratio=l1_ratio, corr_y=corr_y, predict_y=predict_y_all, chunk=i, beta=beta, prediction_accuracy_chunk=prediction_accuracy_chunk)
+        np.savez(chunk_file_name, alpha=alpha, l1_ratio=l1_ratio, corr_y=corr_y, corr_y_train=corr_y_train, predict_y=predict_y_all, chunk=i, beta=beta, prediction_accuracy_chunk=prediction_accuracy_chunk, pca=pca, pca_model=pca_model)
         #previous_chunk_file_name = f"{chunk_save_dir}/edge_prediction_{edge}_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{features_to_use}_states_{n_states}_model_mean_{model_mean}_chunk{i-1}.npz"
         #os.remove(previous_chunk_file_name)
     
     # save the proper edges here
     print(corr_y) 
     logger.info(f"Saving edge pred to: {chunk_save_dir}")
-    np.savez(f"{chunk_save_dir}/edge_prediction_{edge}_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{features_to_use}_states_{n_states}_model_mean_{model_mean}.npz", alpha=alpha, l1_ratio=l1_ratio, corr_y=corr_y, predict_y=predict_y_all, chunk=i, beta=beta, prediction_accuracy_chunk=prediction_accuracy_chunk)
+    np.savez(f"{chunk_save_dir}/edge_prediction_{edge}_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{features_to_use}_states_{n_states}_model_mean_{model_mean}.npz", alpha=alpha, l1_ratio=l1_ratio, corr_y=corr_y, corr_y_train=corr_y_train, predict_y=predict_y_all, chunk=i, beta=beta, prediction_accuracy_chunk=prediction_accuracy_chunk, pca=pca, pca_model=pca_model)

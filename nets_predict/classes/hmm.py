@@ -7,6 +7,7 @@ from osl_dynamics.analysis.modes import calc_trans_prob_matrix
 from sklearn.preprocessing import StandardScaler
 from scipy.stats import pearsonr
 from nets_predict.classes.partial_correlation import PartialCorrelationClass
+from sklearn.decomposition import PCA
 
 _logger = logging.getLogger("Chunk_project")
 PartialCorrClass = PartialCorrelationClass()
@@ -109,11 +110,14 @@ class HiddenMarkovModelClass:
         lt = hmm_features_dict['lt_chunk']
         sr = hmm_features_dict['sr_chunk']
         weighted_covs =  hmm_features_dict['weighted_covs_chunk']
+        weighted_icovs =  hmm_features_dict['weighted_icovs_chunk']
 
         if dynamic_add=='fc':
             feat = self.reshape_cov_features(covs)
         elif dynamic_add=='weighted_covs':
             feat = self.reshape_cov_features(weighted_covs)
+        elif dynamic_add=='weighted_icovs':
+            feat = self.reshape_cov_features(weighted_icovs)
         elif dynamic_add=='pc':
             #feat = self.reshape_cov_features(icovs)
             icovs_off_diag = PartialCorrClass.extract_upper_off_main_diag(icovs)
@@ -176,7 +180,7 @@ class HiddenMarkovModelClass:
 
         # change to MATCH and CASE
         match features_to_use:
-            case "fc" | "weighted_covs":
+            case "fc" | "weighted_covs" | "weighted_icovs":
                 n_fc = n_states * n_upper_diag
                 n_features = int(n_fc + n_static_features) # add 1 to n_states for the statics
             case "pc":
@@ -448,3 +452,25 @@ class HiddenMarkovModelClass:
 
     def NormalizeData(self, data):
         return (data - np.nanmin(data)) / (np.nanmax(data) - np.nanmin(data))
+    
+    def pca_dynamic_only(self, X_train, X_test, n_ICs):
+        
+         # we keep the static features as they are so let's separate them out
+        n_static = self.determine_n_features('static', n_ICs)
+        X_train_static = X_train[:, 0:n_static]
+        X_test_static = X_test[:, 0:n_static]
+        X_train_dynamic = X_train[:, n_static:]
+        X_test_dynamic = X_test[:, n_static:]
+
+        # perform PCA
+        pca_model = PCA(0.9999999, svd_solver='full')
+        pca_model.fit(X_train_dynamic)
+        print(f"Number of new features (i.e., PCs): {np.argmax(np.cumsum(pca_model.explained_variance_ratio_)>0.99)}")
+        X_train_dynamic = pca_model.transform(X_train_dynamic)
+        X_test_dynamic = pca_model.transform(X_test_dynamic)
+
+        # combine static and dynamic features
+        X_train = np.concatenate((X_train_static, X_train_dynamic), axis=1)
+        X_test = np.concatenate((X_test_static, X_test_dynamic), axis=1)
+
+        return X_train, X_test, pca_model
