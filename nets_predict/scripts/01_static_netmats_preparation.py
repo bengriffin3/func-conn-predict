@@ -21,18 +21,30 @@ from nets_predict.classes.partial_correlation import PartialCorrelationClass
 import numpy as np
 from scipy.stats import pearsonr
 from tqdm import trange
+from sklearn.metrics import r2_score
+import logging
 
 #%% Parse command line arguments
 parser = argparse.ArgumentParser()
-parser.add_argument("n_ICs", type=int, help='No. IC components of brain parcellation', choices = [25, 50])
+parser.add_argument("n_ICs", type=int, help='No. IC components of brain parcellation', choices = [25, 50, 100])
 parser.add_argument("n_chunks", type=int, help='How many chunks do you want to divide the time series into?')
+parser.add_argument("--apply_filter", default=0, type=int, help='Apply Butterworth filter to time_series?', choices = [0, 1])
 parser.add_argument("--n_session", default=4, type=int, help='How many sessions was the data recorded across?') # Set to 1 to develop ground truth over all 60 mins
+parser.add_argument("--sampling_freq", default=1.389, type=int, help='Sampling frequency of Butterworth filter? (1.389 for HCP)')
+parser.add_argument("--low_freq", default=0.05, type=float, help='Level of frequency to be cutoff when highpass filtering?')
+
+_logger = logging.getLogger("Chunk_project")
 
 args = parser.parse_args()
 n_ICs = args.n_ICs
 n_chunks = args.n_chunks
-if args.n_session:
-    n_session = args.n_session
+n_session = args.n_session
+apply_filter = args.apply_filter
+sampling_freq = args.sampling_freq
+if apply_filter==1:
+    low_freq = args.low_freq
+elif apply_filter==0:
+    pass
 
 n_edge = int((n_ICs * (n_ICs - 1))/2)
 
@@ -50,15 +62,24 @@ os.makedirs(ground_truth_dir, exist_ok=True)
 with open(f"{proj_dir}/data/data_files_ICA{n_ICs}.txt", "r") as file:
     inputs = file.read().split("\n")
 
-data = Data(inputs, load_memmaps=False, n_jobs=8)
+
+data = Data(inputs, load_memmaps=False, n_jobs=8, sampling_frequency=sampling_freq) 
 data.standardize()
+#data = PartialCorrClass.remove_bad_components(data) # don't have the bad components for HCP
+
+
 
 # develop and save ground truth matrix
 ground_truth_matrix_partial, ground_truth_matrix_full = PartialCorrClass.get_ground_truth_matrix(data, n_session)
-np.save(f"{ground_truth_dir}/ground_truth_partial_mean_{n_session}_sessions.npy", ground_truth_matrix_partial)
-np.save(f"{ground_truth_dir}/ground_truth_full_mean_{n_session}_sessions.npy", ground_truth_matrix_full)
+#np.save(f"{ground_truth_dir}/ground_truth_partial_mean_{n_session}_sessions.npy", ground_truth_matrix_partial)
+#np.save(f"{ground_truth_dir}/ground_truth_full_mean_{n_session}_sessions.npy", ground_truth_matrix_full)
 ground_truth_matrix_partial_flatten = PartialCorrClass.extract_upper_off_main_diag(ground_truth_matrix_partial)
 ground_truth_matrix_full_flatten = PartialCorrClass.extract_upper_off_main_diag(ground_truth_matrix_full)
+
+# filter the data after determining ground truth
+if apply_filter==1:
+    _logger.info("Applying butterworth filter")
+    data.filter(low_freq=low_freq)
 
 # Determine the partial correlation matrix for each chunk of time and flatten
 time_series_chunk =  PartialCorrClass.split_time_series(data, n_chunks) # creates array of size (n_sub x n_chunk x n_IC x n_IC)
@@ -71,23 +92,50 @@ accuracy_per_edge_nm_icov_pm_icov = np.zeros((n_chunks, n_edge))
 accuracy_per_edge_nm_cov_pm_icov = np.zeros((n_chunks, n_edge))
 accuracy_per_edge_nm_icov_pm_cov = np.zeros((n_chunks, n_edge))
 accuracy_per_edge_nm_cov_pm_cov = np.zeros((n_chunks, n_edge))
+r2_per_edge_nm_icov_pm_icov = np.zeros((n_chunks, n_edge))
+r2_per_edge_nm_cov_pm_icov = np.zeros((n_chunks, n_edge))
+r2_per_edge_nm_icov_pm_cov = np.zeros((n_chunks, n_edge))
+r2_per_edge_nm_cov_pm_cov = np.zeros((n_chunks, n_edge))
 
 for edge in trange(n_edge, desc='Getting accuracy per edge:'):
     for chunk in range(n_chunks):
-        accuracy_per_edge_nm_icov_pm_icov[chunk,edge] = pearsonr(partial_correlations_chunk_flatten[:,chunk,edge], ground_truth_matrix_partial_flatten[:,edge])[0]
+        accuracy_per_edge_nm_icov_pm_icov[chunk,edge] = pearsonr(partial_correlations_chunk_flatten[:,chunk,edge], ground_truth_matrix_partial_flatten[:,edge])[0]        
         accuracy_per_edge_nm_cov_pm_icov[chunk,edge] = pearsonr(full_covariances_chunk_flatten[:,chunk,edge], ground_truth_matrix_partial_flatten[:,edge])[0]
         accuracy_per_edge_nm_icov_pm_cov[chunk,edge] = pearsonr(partial_correlations_chunk_flatten[:,chunk,edge], ground_truth_matrix_full_flatten[:,edge])[0]
         accuracy_per_edge_nm_cov_pm_cov[chunk,edge] = pearsonr(full_covariances_chunk_flatten[:,chunk,edge], ground_truth_matrix_full_flatten[:,edge])[0]
 
+        r2_per_edge_nm_icov_pm_icov[chunk,edge] = r2_score(ground_truth_matrix_partial_flatten[:,edge], partial_correlations_chunk_flatten[:,chunk,edge])
+        r2_per_edge_nm_cov_pm_icov[chunk,edge] = r2_score(ground_truth_matrix_partial_flatten[:,edge], full_covariances_chunk_flatten[:,chunk,edge])
+        r2_per_edge_nm_icov_pm_cov[chunk,edge] = r2_score(ground_truth_matrix_full_flatten[:,edge], partial_correlations_chunk_flatten[:,chunk,edge])
+        r2_per_edge_nm_cov_pm_cov[chunk,edge] = r2_score(ground_truth_matrix_full_flatten[:,edge], full_covariances_chunk_flatten[:,chunk,edge])
+
+
 # save partial correlation matrices and accuracy
 save_dir = f"{proj_dir}/results/ICA_{n_ICs}/edge_prediction/{n_chunks}_chunks/combined"
 os.makedirs(save_dir, exist_ok=True)
-np.save(f"{static_dir}/partial_correlations_{n_chunks}_chunks.npy", partial_correlations_chunk)
-np.save(f"{static_dir}/full_covariances_{n_chunks}_chunks.npy", full_covariances_chunk)
+if apply_filter==1:
+    np.save(f"{static_dir}/partial_correlations_{n_chunks}_chunks_low_freq_{low_freq}".replace('.', '_')+".npy", partial_correlations_chunk)
+    np.save(f"{static_dir}/full_covariances_{n_chunks}_chunks_low_freq_{low_freq}".replace('.', '_')+".npy", full_covariances_chunk)
+else:
+    np.save(f"{static_dir}/partial_correlations_{n_chunks}_chunks.npy", partial_correlations_chunk)
+    np.save(f"{static_dir}/full_covariances_{n_chunks}_chunks.npy", full_covariances_chunk) 
+
 
 # save edge accuracies
-np.savez(f"{save_dir}/edge_prediction_all_nm_icov_pm_icov_chunks_{n_chunks}_features_used_actual.npz", accuracy_per_edge=accuracy_per_edge_nm_icov_pm_icov, netmats_flatten = partial_correlations_chunk_flatten.transpose(1, 0, 2))
-np.savez(f"{save_dir}/edge_prediction_all_nm_cov_pm_icov_chunks_{n_chunks}_features_used_actual.npz", accuracy_per_edge=accuracy_per_edge_nm_cov_pm_icov, netmats_flatten = full_covariances_chunk_flatten.transpose(1, 0, 2))
-np.savez(f"{save_dir}/edge_prediction_all_nm_icov_pm_cov_chunks_{n_chunks}_features_used_actual.npz", accuracy_per_edge=accuracy_per_edge_nm_icov_pm_cov, netmats_flatten = partial_correlations_chunk_flatten.transpose(1, 0, 2))
-np.savez(f"{save_dir}/edge_prediction_all_nm_cov_pm_cov_chunks_{n_chunks}_features_used_actual.npz", accuracy_per_edge=accuracy_per_edge_nm_cov_pm_cov, netmats_flatten = full_covariances_chunk_flatten.transpose(1, 0, 2))
+if apply_filter==1:
+    if n_ICs==100:
+        np.savez(f"{save_dir}/edge_prediction_all_nm_icov_pm_icov_chunks_{n_chunks}_features_used_actual_low_freq_{low_freq}".replace('.', '_')+".npz", r2_accuracy_per_edge=r2_per_edge_nm_icov_pm_icov, accuracy_per_edge=accuracy_per_edge_nm_icov_pm_icov)
+        np.savez(f"{save_dir}/edge_prediction_all_nm_cov_pm_icov_chunks_{n_chunks}_features_used_actual_low_freq_{low_freq}".replace('.', '_')+".npz", r2_accuracy_per_edge=r2_per_edge_nm_cov_pm_icov, accuracy_per_edge=accuracy_per_edge_nm_cov_pm_icov)
+        np.savez(f"{save_dir}/edge_prediction_all_nm_icov_pm_cov_chunks_{n_chunks}_features_used_actual_low_freq_{low_freq}".replace('.', '_')+".npz", r2_accuracy_per_edge=r2_per_edge_nm_icov_pm_cov, accuracy_per_edge=accuracy_per_edge_nm_icov_pm_cov)
+        np.savez(f"{save_dir}/edge_prediction_all_nm_cov_pm_cov_chunks_{n_chunks}_features_used_actual_low_freq_{low_freq}".replace('.', '_')+".npz", r2_accuracy_per_edge=r2_per_edge_nm_cov_pm_cov, accuracy_per_edge=accuracy_per_edge_nm_cov_pm_cov)
+    else:
+        np.savez(f"{save_dir}/edge_prediction_all_nm_icov_pm_icov_chunks_{n_chunks}_features_used_actual_low_freq_{low_freq}".replace('.', '_')+".npz", r2_accuracy_per_edge=r2_per_edge_nm_icov_pm_icov, accuracy_per_edge=accuracy_per_edge_nm_icov_pm_icov, partial_correlations_chunk=partial_correlations_chunk, netmats_flatten = partial_correlations_chunk_flatten.transpose(1, 0, 2), ground_truth_matrix_partial_flatten=ground_truth_matrix_partial_flatten)
+        np.savez(f"{save_dir}/edge_prediction_all_nm_cov_pm_icov_chunks_{n_chunks}_features_used_actual_low_freq_{low_freq}".replace('.', '_')+".npz", r2_accuracy_per_edge=r2_per_edge_nm_cov_pm_icov, accuracy_per_edge=accuracy_per_edge_nm_cov_pm_icov, netmats_flatten = full_covariances_chunk_flatten.transpose(1, 0, 2))
+        np.savez(f"{save_dir}/edge_prediction_all_nm_icov_pm_cov_chunks_{n_chunks}_features_used_actual_low_freq_{low_freq}".replace('.', '_')+".npz", r2_accuracy_per_edge=r2_per_edge_nm_icov_pm_cov, accuracy_per_edge=accuracy_per_edge_nm_icov_pm_cov, netmats_flatten = partial_correlations_chunk_flatten.transpose(1, 0, 2))
+        np.savez(f"{save_dir}/edge_prediction_all_nm_cov_pm_cov_chunks_{n_chunks}_features_used_actual_low_freq_{low_freq}".replace('.', '_')+".npz", r2_accuracy_per_edge=r2_per_edge_nm_cov_pm_cov, accuracy_per_edge=accuracy_per_edge_nm_cov_pm_cov, netmats_flatten = full_covariances_chunk_flatten.transpose(1, 0, 2))
+else:
+    np.savez(f"{save_dir}/edge_prediction_all_nm_icov_pm_icov_chunks_{n_chunks}_features_used_actual.npz", r2_accuracy_per_edge=r2_per_edge_nm_icov_pm_icov, accuracy_per_edge=accuracy_per_edge_nm_icov_pm_icov, partial_correlations_chunk=partial_correlations_chunk, netmats_flatten = partial_correlations_chunk_flatten.transpose(1, 0, 2), ground_truth_matrix_partial_flatten=ground_truth_matrix_partial_flatten)
+    np.savez(f"{save_dir}/edge_prediction_all_nm_cov_pm_icov_chunks_{n_chunks}_features_used_actual.npz", r2_accuracy_per_edge=r2_per_edge_nm_cov_pm_icov, accuracy_per_edge=accuracy_per_edge_nm_cov_pm_icov, netmats_flatten = full_covariances_chunk_flatten.transpose(1, 0, 2))
+    np.savez(f"{save_dir}/edge_prediction_all_nm_icov_pm_cov_chunks_{n_chunks}_features_used_actual.npz", r2_accuracy_per_edge=r2_per_edge_nm_icov_pm_cov, accuracy_per_edge=accuracy_per_edge_nm_icov_pm_cov, netmats_flatten = partial_correlations_chunk_flatten.transpose(1, 0, 2))
+    np.savez(f"{save_dir}/edge_prediction_all_nm_cov_pm_cov_chunks_{n_chunks}_features_used_actual.npz", r2_accuracy_per_edge=r2_per_edge_nm_cov_pm_cov, accuracy_per_edge=accuracy_per_edge_nm_cov_pm_cov, netmats_flatten = full_covariances_chunk_flatten.transpose(1, 0, 2))
 
