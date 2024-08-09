@@ -208,3 +208,39 @@ class PartialCorrelationClass:
                 time_series_chunk[sub,chunk,:,:] = time_series_sub[chunk]
 
         return time_series_chunk
+    
+    def find_original_indices(self, edge_index, netmats):
+        # Get upper off-diagonal indices
+        upper_off_diag_indices = np.triu_indices(netmats.shape[-1], 1)
+        row = upper_off_diag_indices[0][edge_index]
+        col = upper_off_diag_indices[1][edge_index]
+        return row, col
+    
+
+    def remove_bad_components(self, data):
+
+        n_sub = len(data.time_series())
+        n_ICs = data.time_series()[0].shape[1]
+
+        # I only have the bad components for UKB but this project is for HCP so I've removed this for now
+        if n_ICs == 25:
+            good_components = list(range(1, 26))# keep all, the below is for UKB
+            #good_components = [1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
+        elif n_ICs == 100:
+            good_components = list(range(1, 101))
+            #good_components = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 45, 46, 48, 49, 50, 52, 53, 57, 58, 60, 63, 64, 93]
+            
+
+        # Adjust good_components for 0-based indexing
+        good_components_indices = [i - 1 for i in good_components]
+
+        # Note that we also remove the first 8 time points since this is often where [errors?] occur (Ask Janus)
+        session_length = 1200
+        num_sessions = 4
+        time_point_indices = np.concatenate([np.arange(i * session_length + 8, (i + 1) * session_length) for i in range(num_sessions)])
+        
+        # Iterate over each subject's time series and select the good components and good time points
+        for i in range(n_sub):
+            data.time_series()[i] = data.time_series()[i][time_point_indices, good_components_indices]
+
+        return data
