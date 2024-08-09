@@ -117,7 +117,10 @@ class HiddenMarkovModelClass:
         elif dynamic_add=='weighted_covs':
             feat = self.reshape_cov_features(weighted_covs)
         elif dynamic_add=='weighted_icovs':
-            feat = self.reshape_cov_features(weighted_icovs)
+            #feat = self.reshape_cov_features(weighted_icovs)
+            weighted_icovs_off_diag = PartialCorrClass.extract_upper_off_main_diag(weighted_icovs)
+            weighted_icovs_off_diag = np.nan_to_num(weighted_icovs) # we have NaNs when states have 0 FO so replace with 0 here
+            feat = weighted_icovs_off_diag.reshape(weighted_icovs_off_diag.shape[0], -1)
         elif dynamic_add=='pc':
             #feat = self.reshape_cov_features(icovs)
             icovs_off_diag = PartialCorrClass.extract_upper_off_main_diag(icovs)
@@ -171,7 +174,8 @@ class HiddenMarkovModelClass:
 
     def determine_n_features(self, features_to_use, n_ICs, n_states=0):
 
-        if n_states == 0 and features_to_use != 'static':
+        if (n_states == 0 and (features_to_use != 'static' and features_to_use != 'static_pca' and features_to_use != 'static_connecting_edges' and features_to_use != 'static_self_edge_only')):
+        #if (n_states == 0 and ('static' not in features_to_use)):
             _logger.exception("Using dynamic features but n_states not specified", stack_info=True, exc_info=True)
             exit()
 
@@ -180,10 +184,10 @@ class HiddenMarkovModelClass:
 
         # change to MATCH and CASE
         match features_to_use:
-            case "fc" | "weighted_covs" | "weighted_icovs":
+            case "fc" | "weighted_covs":
                 n_fc = n_states * n_upper_diag
                 n_features = int(n_fc + n_static_features) # add 1 to n_states for the statics
-            case "pc":
+            case "pc" | "weighted_icovs":
                 n_pc = n_states * n_static_features # also ignore main diagonal for PC here
                 n_features = int(n_pc + n_static_features)
             case "means":
@@ -204,7 +208,7 @@ class HiddenMarkovModelClass:
                 n_tpms = n_states * n_states
                 n_summary_stats = n_states * 4 
                 n_features = int(n_tpms + n_summary_stats) # 4 summary states for each state
-            case "static":
+            case "static" | "static_pca" | "static_connecting_edges" | "static_self_edge_only":
                 n_features = int(n_static_features)
             case _:
                 raise ValueError('The inputted static/dynamic features are not a valid option)')
@@ -272,25 +276,30 @@ class HiddenMarkovModelClass:
         }
         
     
-    def get_predictor_features(self, netmats, hmm_features_dict, features_to_use):
+    def get_predictor_features(self, netmats, hmm_features_dict, features_to_use, edge_index):
 
-        if features_to_use!='static': 
+        if features_to_use=='static' or features_to_use=='static_pca' or features_to_use=='static_self_edge_only':
+            X = PartialCorrClass.extract_upper_off_main_diag(netmats)
+        elif features_to_use=='static_connecting_edges':
+            row, col = PartialCorrClass.find_original_indices(edge_index, netmats)
+            X_incoming = netmats[:, row, :]
+            X_incoming = np.delete(X_incoming, col, axis=1) # delete the self edge to avoid duplication
+            X_outgoing = netmats[:, :, col]
+            X = np.concatenate([X_incoming, X_outgoing],axis=1) 
+        else:
             if features_to_use=='tpms_ss_only':
                 X = self.reshape_dynamic_features(hmm_features_dict, features_to_use)
 
             else:
-                pass
                 X_static = PartialCorrClass.extract_upper_off_main_diag(netmats)
 
                 # Form the design matrix of dynamic features (depending on features select in 'dynamic_add')
                 X_dynamic = self.reshape_dynamic_features(hmm_features_dict, features_to_use)
                 
                 # Combine static and dynamic
-                X = np.concatenate([X_static, X_dynamic],axis=1)      
-        else: # use static features only
-            X = PartialCorrClass.extract_upper_off_main_diag(netmats)
+                X = np.concatenate([X_static, X_dynamic],axis=1) 
 
-        return X 
+        return X
 
     def standardise_train_apply_to_test(self, X_train, X_test):
         scaler = StandardScaler()
@@ -474,3 +483,17 @@ class HiddenMarkovModelClass:
         X_test = np.concatenate((X_test_static, X_test_dynamic), axis=1)
 
         return X_train, X_test, pca_model
+
+    def self_predict_plus_pca(self, X, edge_index):
+        # 1) note down edge C_ii (i.e. self edge)
+        X_self_edge = X[:, edge_index].reshape(-1, 1)
+
+        # 2) perform PCA on all the remaining edges
+        X_without_self_edge = np.delete(X, edge_index, axis=1)
+        pca_model = PCA(0.85, svd_solver='full')
+        X_without_self_edge_pca = pca_model.fit_transform(X_without_self_edge)
+
+        # 3) combine into new X
+        X = np.concatenate((X_self_edge, X_without_self_edge_pca), axis=1)
+
+        return X
