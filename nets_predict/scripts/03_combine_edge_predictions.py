@@ -28,6 +28,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("n_ICs", type=int, help='No. IC components of brain parcellation', choices = [25, 50])
 parser.add_argument("n_chunk", type=int, help='How many chunks was the data divided into?', choices = [2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60, 120])
 parser.add_argument("feature_type", type=str, help='Which features were used to run the prediction? fc, pc, means, tpms_ss, tpms_ss_only, static')
+parser.add_argument("--prediction_model", default = 'elastic_net', type = str, help = 'Which prediction method to use?', choices = ['elastic_net','xgboost'])
 parser.add_argument("--apply_filter", default=0, type=int, help='Was a Butterworth filter applied to the data?', choices = [0, 1])
 parser.add_argument("--low_freq", default=0, type=float, help='What frequency filter was used for the highpass?')
 parser.add_argument("--n_fold", default=10, type=int, help='How many folds were used for the cross-validation?', choices = [10])
@@ -46,6 +47,7 @@ n_states = args.n_states
 network_matrix = args.network_matrix
 prediction_matrix = args.prediction_matrix
 apply_filter = args.apply_filter
+prediction_model = args.prediction_model
 if apply_filter==1:
    low_freq = args.low_freq
    low_freq = float(np.round(low_freq, 3))
@@ -87,14 +89,18 @@ r2_accuracy_per_edge = np.zeros((n_chunk, n_edge))
 r2_accuracy_per_edge[:] = np.nan
 
 
-for edge in trange(0, n_edge, desc='Saving info for edges...'):
+#for edge in trange(0, n_edge, desc='Saving info for edges...'):
+for edge in range(0, n_edge, 2):
+    
+    if prediction_model=='xgboost':# or prediction_model=='elastic_net':
+        edge_prediction_vars = np.load(f'{load_dir}/edge_prediction_{edge}_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{feature_type}_states_{n_states}_model_mean_{model_mean}_model_{prediction_model}.npz')
+    else: 
+        if apply_filter==1:
+            edge_prediction_vars = np.load(f'{load_dir}/edge_prediction_{edge}_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{feature_type}_states_{n_states}_model_mean_{model_mean}_low_freq_{low_freq}'.replace('.', '_')+'.npz')
+        elif apply_filter==0:
+            edge_prediction_vars = np.load(f'{load_dir}/edge_prediction_{edge}_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{feature_type}_states_{n_states}_model_mean_{model_mean}.npz')
 
-    
-    if apply_filter==1:
-        edge_prediction_vars = np.load(f'{load_dir}/edge_prediction_{edge}_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{feature_type}_states_{n_states}_model_mean_{model_mean}_low_freq_{low_freq}'.replace('.', '_')+'.npz')
-    elif apply_filter==0:
-        edge_prediction_vars = np.load(f'{load_dir}/edge_prediction_{edge}_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{feature_type}_states_{n_states}_model_mean_{model_mean}.npz')
-    
+
     # predicted_edges_all[j, :,:,edge] = a['predict_y']
     alpha[:, :, edge] = edge_prediction_vars['alpha']
     l1_ratio[:, :, edge] = edge_prediction_vars['l1_ratio']
@@ -112,19 +118,33 @@ for edge in trange(0, n_edge, desc='Saving info for edges...'):
 
 
 for edge in trange(0, n_edge, desc='Saving info for edges...'):
+    print(edge)
     for chunk in range(n_chunk): # n_chunk
-        r2_accuracy_per_edge[chunk, edge] = r2_score(ground_truth_edges[:,edge], predict_y[chunk, :, edge])
+        if sum(np.isnan(predict_y[chunk, :, edge]))>0:
+            continue
+        else: 
+            r2_accuracy_per_edge[chunk, edge] = r2_score(ground_truth_edges[:,edge], predict_y[chunk, :, edge])
 
-if apply_filter==1:
-    np.savez(f"{save_dir}/edge_prediction_all_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{feature_type}_states_{n_states}_model_mean_{model_mean}_low_freq_{low_freq}".replace('.', '_')+".npz", 
-            alpha=alpha, l1_ratio=l1_ratio, corr_y=corr_y, predict_y=predict_y, beta=beta, accuracy_per_edge=accuracy_per_edge)
-    np.savez(f"{save_dir}/edge_prediction_all_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{feature_type}_states_{n_states}_model_mean_{model_mean}_with_r2_low_freq_{low_freq}".replace('.', '_')+".npz", 
-            alpha=alpha, l1_ratio=l1_ratio, corr_y=corr_y, predict_y=predict_y, beta=beta, accuracy_per_edge=accuracy_per_edge, r2_accuracy_per_edge=r2_accuracy_per_edge)
-elif apply_filter==0:
-    np.savez(f"{save_dir}/edge_prediction_all_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{feature_type}_states_{n_states}_model_mean_{model_mean}.npz", 
-            alpha=alpha, l1_ratio=l1_ratio, corr_y=corr_y, predict_y=predict_y, beta=beta, accuracy_per_edge=accuracy_per_edge)
-    np.savez(f"{save_dir}/edge_prediction_all_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{feature_type}_states_{n_states}_model_mean_{model_mean}_with_r2.npz", 
-            alpha=alpha, l1_ratio=l1_ratio, corr_y=corr_y, predict_y=predict_y, beta=beta, accuracy_per_edge=accuracy_per_edge, r2_accuracy_per_edge=r2_accuracy_per_edge)
+
+
+if prediction_model=='xgboost':# or prediction_model=='elastic_net':
+    # if apply_filter==1:
+    #     np.savez(f"{save_dir}/edge_prediction_all_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{feature_type}_states_{n_states}_model_mean_{model_mean}_low_freq_{low_freq}".replace('.', '_')+f"_with_r2_model_{prediction_model}.npz", 
+    #                 alpha=alpha, l1_ratio=l1_ratio, corr_y=corr_y, predict_y=predict_y, beta=beta, accuracy_per_edge=accuracy_per_edge, r2_accuracy_per_edge=r2_accuracy_per_edge) 
+    # else:
+    np.savez(f"{save_dir}/edge_prediction_all_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{feature_type}_states_{n_states}_model_mean_{model_mean}_with_r2_model_{prediction_model}.npz", 
+                alpha=alpha, l1_ratio=l1_ratio, corr_y=corr_y, predict_y=predict_y, beta=beta, accuracy_per_edge=accuracy_per_edge, r2_accuracy_per_edge=r2_accuracy_per_edge)     
+else:
+    if apply_filter==1:
+        np.savez(f"{save_dir}/edge_prediction_all_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{feature_type}_states_{n_states}_model_mean_{model_mean}_low_freq_{low_freq}".replace('.', '_')+".npz", 
+                alpha=alpha, l1_ratio=l1_ratio, corr_y=corr_y, predict_y=predict_y, beta=beta, accuracy_per_edge=accuracy_per_edge)
+        np.savez(f"{save_dir}/edge_prediction_all_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{feature_type}_states_{n_states}_model_mean_{model_mean}_with_r2_low_freq_{low_freq}".replace('.', '_')+".npz", 
+                alpha=alpha, l1_ratio=l1_ratio, corr_y=corr_y, predict_y=predict_y, beta=beta, accuracy_per_edge=accuracy_per_edge, r2_accuracy_per_edge=r2_accuracy_per_edge)
+    elif apply_filter==0:
+        np.savez(f"{save_dir}/edge_prediction_all_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{feature_type}_states_{n_states}_model_mean_{model_mean}.npz", 
+                alpha=alpha, l1_ratio=l1_ratio, corr_y=corr_y, predict_y=predict_y, beta=beta, accuracy_per_edge=accuracy_per_edge)
+        np.savez(f"{save_dir}/edge_prediction_all_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{feature_type}_states_{n_states}_model_mean_{model_mean}_with_r2.npz", 
+                alpha=alpha, l1_ratio=l1_ratio, corr_y=corr_y, predict_y=predict_y, beta=beta, accuracy_per_edge=accuracy_per_edge, r2_accuracy_per_edge=r2_accuracy_per_edge)
 
 
 # r2_per_edge_nm_icov_pm_icov_version2 = np.zeros((n_chunk, n_edge))

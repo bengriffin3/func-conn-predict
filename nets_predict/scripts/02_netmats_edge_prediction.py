@@ -76,6 +76,10 @@ results_dir = f"{proj_dir}/results/ICA_{n_ICs}"
 chunk_save_dir = f"{results_dir}/edge_prediction/{n_chunk}_chunks"
 os.makedirs(chunk_save_dir, exist_ok=True)
 
+
+
+
+
 #%% Load features to predict with
 # load static partial correlation matrix for chunked time series
 if apply_filter==1:
@@ -100,7 +104,7 @@ else:
         hmm_features_dict = pickle.load(file)
 
 
-for edge in range(network_edge, network_edge+5):
+for edge in range(network_edge, network_edge+2):
     if apply_filter==1:
         single_edge_prediction = f"{chunk_save_dir}/edge_prediction_{edge}_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{features_to_use}_states_{n_states}_model_mean_{model_mean}_low_freq_{low_freq}".replace('.', '_')+".npz"
         joint_edge_prediction = f"{chunk_save_dir}/combined/edge_prediction_all_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{features_to_use}_states_{n_states}_model_mean_{model_mean}_low_freq_{low_freq}".replace('.', '_')+".npz"
@@ -295,7 +299,12 @@ for edge in range(network_edge, network_edge+5):
             predict_y_all[i,test_index] = y_pred
             corr_y[i,fold] = correlation
             corr_y_train[i,fold] = correlation_train
-            print(correlation), print(correlation_train) 
+            print(correlation), print(correlation_train)
+            logger.info(f"Training accuracy: {correlation_train}")
+            logger.info(f"Test accuracy: {correlation}")
+
+            logger.info(f"Pausing")
+            time.sleep(10)
             
             print(corr_y[i,fold])
 
