@@ -1,14 +1,35 @@
 import numpy as np
 import unittest
-from nets_predict.classes.partial_correlation import PartialCorrelationClass
-
-proj_dir = '/gpfs3/well/win-fmrib-analysis/users/psz102/osld_scripts/hcp_scripts/'
+from nets_predict.classes.partial_correlation import PartialCorrelation, PartialCorrelationAnalysis, CovarianceUtils
 
 class TestPartialCorrelation(unittest.TestCase):
 
     @classmethod
-    def setUpClass(self):
-        self.partial_corr = PartialCorrelationClass()
+    def setUpClass(cls):
+        cls.partial_corr = PartialCorrelation()
+        cls.partial_corr_analysis = PartialCorrelationAnalysis(cls.partial_corr) 
+        cls.covariance_utils = CovarianceUtils()
+
+    def test_matrix_inversion(self):
+        # matrix to invert
+        m1 = np.array([[0.5, 1.5],[1.5, 4.5]])
+
+        # invert using function
+        m1_inv = np.round(self.covariance_utils.covariance_to_precision(m1, rho=0.1), 8)
+
+        # ideal inversion
+        m2 = np.array([[9.01960784, -2.94117647], [-2.94117647, 1.17647059]]) 
+
+        np.testing.assert_array_almost_equal(m1_inv, m2, decimal=8)
+
+    def test_fisher_transform_calc(self):
+        Sigma_partial_corr = np.array([[0, 0.75441865], [0.75441865, 0]])
+        Sigma_partial_corr_r2z = np.array([[0, 18.51336406], [18.51336406, 0]])
+
+        Fisher_transform_pc = np.round(self.partial_corr.utils.fisher_transform(Sigma_partial_corr), 8)
+
+        np.testing.assert_array_almost_equal(Fisher_transform_pc, Sigma_partial_corr_r2z, decimal=8)
+
 
     def test_matrix_inversion(self):
 
@@ -16,8 +37,7 @@ class TestPartialCorrelation(unittest.TestCase):
         m1 = np.array([[0.5, 1.5],[1.5, 4.5]])
 
         # invert using function
-        m1_inv = np.round(self.partial_corr.covariance_to_precision(m1, rho=0.1), 8)
-        #m1_inv = self.partial_corr.covariance_to_precision(m1, rho=0.1)
+        m1_inv = np.round(self.covariance_utils.covariance_to_precision(m1, rho=0.1), 8)
 
         # ideal inversion
         m2 = np.array([[ 9.01960784, -2.94117647], [-2.94117647,  1.17647059]]) 
@@ -42,34 +62,22 @@ class TestPartialCorrelation(unittest.TestCase):
         self.assertEqual(Sigma_partial_corr_r2z.tolist(), partial_correlations_r2z.tolist())
         self.assertEqual(Sigma_precision_matrix.tolist(), precision_matrix.tolist())
 
-    def test_fisher_transform_calc(self):
-
-        Sigma_partial_corr = np.array([[0 , 0.75441865], [0.75441865, 0]])
-        # this is different to the previous test because we rounded the 'Sigma_partial_corr' for the previous test
-        Sigma_partial_corr_r2z = np.array([[ 0, 18.51336406], [18.51336406,  0]])
-
-        Fisher_transform_pc = np.round(self.partial_corr.fisher_transform_scaled(Sigma_partial_corr), 8)
-
-        self.assertEqual(Sigma_partial_corr_r2z.tolist(), Fisher_transform_pc.tolist())
 
     def test_extract_upper_diag_array(self):
-
-        PartialCorrClass = PartialCorrelationClass()
-
-        # example with 4 HMM states and a 3x3 covariance matrix
+        # Using the instance from setUpClass
         hmm_covariances = np.array([[[1, 7, 0],[5, 2, 0],[7, 7, 1]],
-                            [[6, 0, 1],[4, 3, 0],[6, 5, 8]],
-                            [[6, 5, 4],[3, 5, 0],[0, 6, 6]],
-                            [[9, 1, 0],[5, 0, 2],[5, 1, 5]]])
+                                     [[6, 0, 1],[4, 3, 0],[6, 5, 8]],
+                                     [[6, 5, 4],[3, 5, 0],[0, 6, 6]],
+                                     [[9, 1, 0],[5, 0, 2],[5, 1, 5]]])
 
         hmm_covariances_upper_diag_target = np.array([[7, 0, 0], [0, 1, 0], [5, 4, 0], [1, 0, 2]])
-        hmm_covariances_upper_diag_fun = PartialCorrClass.extract_upper_off_main_diag(hmm_covariances)
-        self.assertEqual(hmm_covariances_upper_diag_target.tolist(), hmm_covariances_upper_diag_fun.tolist())
+        hmm_covariances_upper_diag_fun = self.partial_corr_analysis.extract_upper_off_main_diag(hmm_covariances)
+        np.testing.assert_array_equal(hmm_covariances_upper_diag_fun, hmm_covariances_upper_diag_target)
 
         hmm_covariances_2 = np.array([[0.5, 1.5],[1.5, 4.5]])
         hmm_covariances_upper_diag_target_2 = np.array([1.5])
-        hmm_covariances_upper_diag_fun_2 = PartialCorrClass.extract_upper_off_main_diag(hmm_covariances_2)
-        self.assertEqual(hmm_covariances_upper_diag_target_2.tolist(), hmm_covariances_upper_diag_fun_2.tolist())
+        hmm_covariances_upper_diag_fun_2 = self.partial_corr_analysis.extract_upper_off_main_diag(hmm_covariances_2)
+        np.testing.assert_array_equal(hmm_covariances_upper_diag_fun_2, hmm_covariances_upper_diag_target_2)
 
 
 if __name__ == '__main__':
