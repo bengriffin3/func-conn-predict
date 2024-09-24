@@ -9,6 +9,7 @@ This project predicts "ground truth" partial correlation matrices (netmats) deri
 - **01_static_netmats_prepaaration.py: Generate a 'ground truth' netmat based on the whole time series.
 - **02_netmats_edge_prediction.py: Predict the ground truth netmats (one edge at a time) using user specified features.
 - **03_combine_edge_predictions.py: Combine the predictions from script 02...
+- **04_weighted_covs_asis.py: Weighted the covariances by their respective FOs
 
 Scripts in `job_submission` can be used to submit jobs to the BMRC cluster. 
 

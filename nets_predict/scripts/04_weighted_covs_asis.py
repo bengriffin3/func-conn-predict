@@ -16,7 +16,7 @@
 #%% Import modules
 import os
 import argparse
-from nets_predict.classes.partial_correlation import PartialCorrelationClass
+from nets_predict.classes.partial_correlation import PartialCorrelation
 import numpy as np
 from scipy.stats import pearsonr
 from tqdm import trange
@@ -44,9 +44,6 @@ if args.n_session:
 
 n_edge = int((n_ICs * (n_ICs - 1))/2)
 
-# Initialise class instance
-PartialCorrClass = PartialCorrelationClass()
-
 #%% Set directories
 proj_dir = "/well/win-fmrib-analysis/users/psz102/nets-predict/nets_predict"
 static_dir = f"{proj_dir}/results/ICA_{n_ICs}/static"
@@ -54,7 +51,9 @@ ground_truth_dir = f"{proj_dir}/results/ICA_{n_ICs}/ground_truth"
 
 #%% Load ground truth matrix
 ground_truth_matrix_partial = np.load(f"{ground_truth_dir}/ground_truth_partial_mean_4_sessions.npy")
-ground_truth_matrix_partial_flatten = PartialCorrClass.extract_upper_off_main_diag(ground_truth_matrix_partial)
+
+partial_correlation = PartialCorrelation(ground_truth_matrix_partial)
+ground_truth_matrix_partial_flatten = partial_correlation.extract_upper_off_main_diag()
 
 # here we load the HMM feature dictionary, including the weighted covs
 dynamic_dir = f"{proj_dir}/results/ICA_{n_ICs}/dynamic/run{run:02d}_states{n_states:02d}_DD{trans_prob_diag:06d}_model_mean_{model_mean}/{n_chunks}_chunks"
@@ -73,13 +72,15 @@ for chunk in range(n_chunks):
     # covs
     weighted_covs = hmm_features_dict[chunk]['weighted_covs_chunk']
     weighted_covs_sum = np.sum(weighted_covs, axis=1)
-    weighted_covs_flatten[:, chunk, :] = PartialCorrClass.extract_upper_off_main_diag(weighted_covs_sum)
+    partial_correlation = PartialCorrelation(weighted_covs_sum)
+    weighted_covs_flatten[:, chunk, :] = PartialCorrClass.extract_upper_off_main_diag()
 
     #icovs
     weighted_icovs = hmm_features_dict[chunk]['weighted_icovs_chunk']
-    weighted_icovs = np.nan_to_num(weighted_icovs)
+    weighted_icovs = np.nan_to_num(weighted_icovs) # icovs gives nan diagonal
     weighted_icovs_sum = np.sum(weighted_icovs, axis=1)
-    weighted_icovs_flatten[:, chunk, :] = PartialCorrClass.extract_upper_off_main_diag(weighted_icovs_sum)
+    partial_correlation = PartialCorrelation(weighted_icovs_sum)
+    weighted_icovs_flatten[:, chunk, :] = PartialCorrClass.extract_upper_off_main_diag()
 
     for edge in trange(n_edge, desc='Getting accuracy per edge:'):
         accuracy_per_edge_nm_icov_pm_icov_weighted_covs[chunk,edge] = pearsonr(weighted_covs_flatten[:,chunk, edge], ground_truth_matrix_partial_flatten[:,edge])[0]

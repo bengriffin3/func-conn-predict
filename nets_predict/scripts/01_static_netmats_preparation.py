@@ -1,141 +1,83 @@
-""" 
+"""
     Static netmats calculations for the 'ground truth' for HCP subjects.
 
     We calculate the 'ground truth' netmats for each subject by calculating the 
-    (partial correlation r2z) netmats for each of the four 15 minutes sessions 
+    (partial correlation r2z) netmats for each of the four 15-minute sessions 
     and then taking the average across 4 sessions. 
 
-    We could just find it over all 60 minutes too but Steve has done the average 
-    in a previous paper (because the sessions are recoreded separately so by taking
-    the average we are trying to remove the noise).
-
-    I think meaning across covariances for each of the 4 sessions is equivalent
-    to just treating it at one 60 minute session.
-
+    We could just compute it over all 60 minutes too, but the average has been done
+    in a previous paper (because the sessions are recorded separately, so averaging
+    helps to reduce noise).
 """
+
 #%% Import modules
 import os
-from osl_dynamics.data import Data
+import sys
+import logging
 import argparse
-from nets_predict.classes.partial_correlation import PartialCorrelationClass
 import numpy as np
 from scipy.stats import pearsonr
 from tqdm import trange
 from sklearn.metrics import r2_score
-import logging
+from osl_dynamics.data import Data
+
+# Import custom classes
+base_dir = "/gpfs3/well/win-fmrib-analysis/users/psz102/nets-predict"
+proj_dir = f"{base_dir}/nets_predict"
+sys.path.append(base_dir)
+from nets_predict.classes.partial_correlation import PartialCorrelationAnalysis, PartialCorrelation, ProjectSetup, PartialCorrelationCalculation, GroundTruthPreparation
+from nets_predict.classes.hmm import TimeSeriesProcessing
+
+#%% Set up logger
+_logger = logging.getLogger("fc_prediction")
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 #%% Parse command line arguments
-parser = argparse.ArgumentParser()
-parser.add_argument("n_ICs", type=int, help='No. IC components of brain parcellation', choices = [25, 50, 100])
-parser.add_argument("n_chunks", type=int, help='How many chunks do you want to divide the time series into?')
-parser.add_argument("--apply_filter", default=0, type=int, help='Apply Butterworth filter to time_series?', choices = [0, 1])
-parser.add_argument("--n_session", default=4, type=int, help='How many sessions was the data recorded across?') # Set to 1 to develop ground truth over all 60 mins
-parser.add_argument("--sampling_freq", default=1.389, type=int, help='Sampling frequency of Butterworth filter? (1.389 for HCP)')
-parser.add_argument("--low_freq", default=0.05, type=float, help='Level of frequency to be cutoff when highpass filtering?')
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Calculate static netmats for HCP subjects")
+    parser.add_argument("n_ICs", type=int, help='Number of IC components of brain parcellation', choices=[25, 50, 100])
+    parser.add_argument("n_chunks", type=int, help='How many chunks to divide the time series into?')
+    parser.add_argument("--n_session", default=4, type=int, help='Number of sessions the data was recorded across') # Set to 1 to use all 60 minutes as "ground truth"
+    # parser.add_argument("--apply_filter", default=0, type=int, help='Apply Butterworth filter to time series?', choices=[0, 1])
+    # parser.add_argument("--sampling_freq", default=1.389, type=float, help='Sampling frequency for Butterworth filter (1.389 for HCP)')
+    # parser.add_argument("--low_freq", default=0.05, type=float, help='Frequency cutoff for highpass filtering')
+    return parser.parse_args()
 
-_logger = logging.getLogger("Chunk_project")
+project_setup = ProjectSetup()
+partial_correlation_calculation = PartialCorrelationCalculation()
+ground_truth_preparation = GroundTruthPreparation()
 
-args = parser.parse_args()
-n_ICs = args.n_ICs
-n_chunks = args.n_chunks
-n_session = args.n_session
-apply_filter = args.apply_filter
-sampling_freq = args.sampling_freq
-if apply_filter==1:
-    low_freq = args.low_freq
-elif apply_filter==0:
-    pass
+#%% Main script execution
+if __name__ == "__main__":
+    # Parse arguments and initialize parameters
+    args = parse_arguments()
+    n_ICs, n_chunks, n_session, n_edge = project_setup.initialize_parameters(args)
+    
+    # Initialise class instance
+    time_series_processing = TimeSeriesProcessing()
 
-n_edge = int((n_ICs * (n_ICs - 1))/2)
+    #%% Set directories
+    [static_dir, ground_truth_dir] = project_setup.setup_directories(proj_dir, n_ICs)
 
-# Initialise class instance
-PartialCorrClass = PartialCorrelationClass()
+    #%% Load and prepare data
+    with open(f"{proj_dir}/data/data_files_ICA{n_ICs}.txt", "r") as file:
+        inputs = file.read().split("\n")
 
-#%% Set directories
-proj_dir = "/well/win-fmrib-analysis/users/psz102/nets-predict/nets_predict"
-static_dir = f"{proj_dir}/results/ICA_{n_ICs}/static"
-ground_truth_dir = f"{proj_dir}/results/ICA_{n_ICs}/ground_truth"
-os.makedirs(static_dir, exist_ok=True)
-os.makedirs(ground_truth_dir, exist_ok=True)
+    data = Data(inputs, load_memmaps=False, n_jobs=8)
+    data.standardize()
+    #data = time_series_processing.remove_bad_components(data) # don't have the bad components for HCP
 
-#%% Load and prepare data
-with open(f"{proj_dir}/data/data_files_ICA{n_ICs}.txt", "r") as file:
-    inputs = file.read().split("\n")
+    # develop and save ground truth matrix
+    [ground_truth_matrix_partial, ground_truth_matrix_full] = ground_truth_preparation.prepare_ground_truth_matrices(data, n_session, ground_truth_dir)
 
+    # Flatten partial correlation and full covairance matrices
+    [ground_truth_matrix_partial_flatten, ground_truth_matrix_full_flatten] = ground_truth_preparation.flatten_matrices(ground_truth_matrix_partial, ground_truth_matrix_full)
 
-data = Data(inputs, load_memmaps=False, n_jobs=8, sampling_frequency=sampling_freq) 
-data.standardize()
-#data = PartialCorrClass.remove_bad_components(data) # don't have the bad components for HCP
+    [partial_correlations_chunk, full_covariances_chunk, partial_correlations_chunk_flatten, full_covariances_chunk_flatten] = partial_correlation_calculation.calculate_partial_correlations_chunks(data, n_chunks)
 
+    # Compute metrics
+    [metrics, chunk_matrices] = partial_correlation_calculation.compute_metrics(n_edge, n_chunks, ground_truth_matrix_partial_flatten, ground_truth_matrix_full_flatten, partial_correlations_chunk_flatten, full_covariances_chunk_flatten)
 
-
-# develop and save ground truth matrix
-ground_truth_matrix_partial, ground_truth_matrix_full = PartialCorrClass.get_ground_truth_matrix(data, n_session)
-#np.save(f"{ground_truth_dir}/ground_truth_partial_mean_{n_session}_sessions.npy", ground_truth_matrix_partial)
-#np.save(f"{ground_truth_dir}/ground_truth_full_mean_{n_session}_sessions.npy", ground_truth_matrix_full)
-ground_truth_matrix_partial_flatten = PartialCorrClass.extract_upper_off_main_diag(ground_truth_matrix_partial)
-ground_truth_matrix_full_flatten = PartialCorrClass.extract_upper_off_main_diag(ground_truth_matrix_full)
-
-# filter the data after determining ground truth
-if apply_filter==1:
-    _logger.info("Applying butterworth filter")
-    data.filter(low_freq=low_freq)
-
-# Determine the partial correlation matrix for each chunk of time and flatten
-time_series_chunk =  PartialCorrClass.split_time_series(data, n_chunks) # creates array of size (n_sub x n_chunk x n_IC x n_IC)
-partial_correlations_chunk, full_covariances_chunk = PartialCorrClass.get_partial_correlation_chunk(time_series_chunk, n_chunks) # get partial correlation matrix
-partial_correlations_chunk_flatten = PartialCorrClass.extract_upper_off_main_diag(partial_correlations_chunk) # extract upper diagonal (excluding main diagonal)
-full_covariances_chunk_flatten = PartialCorrClass.extract_upper_off_main_diag(full_covariances_chunk) # extract upper diagonal (excluding main diagonal)
-
-# determine accuracy of the chunked up partial corr vs ground truth partial corr
-accuracy_per_edge_nm_icov_pm_icov = np.zeros((n_chunks, n_edge))
-accuracy_per_edge_nm_cov_pm_icov = np.zeros((n_chunks, n_edge))
-accuracy_per_edge_nm_icov_pm_cov = np.zeros((n_chunks, n_edge))
-accuracy_per_edge_nm_cov_pm_cov = np.zeros((n_chunks, n_edge))
-r2_per_edge_nm_icov_pm_icov = np.zeros((n_chunks, n_edge))
-r2_per_edge_nm_cov_pm_icov = np.zeros((n_chunks, n_edge))
-r2_per_edge_nm_icov_pm_cov = np.zeros((n_chunks, n_edge))
-r2_per_edge_nm_cov_pm_cov = np.zeros((n_chunks, n_edge))
-
-for edge in trange(n_edge, desc='Getting accuracy per edge:'):
-    for chunk in range(n_chunks):
-        accuracy_per_edge_nm_icov_pm_icov[chunk,edge] = pearsonr(partial_correlations_chunk_flatten[:,chunk,edge], ground_truth_matrix_partial_flatten[:,edge])[0]        
-        accuracy_per_edge_nm_cov_pm_icov[chunk,edge] = pearsonr(full_covariances_chunk_flatten[:,chunk,edge], ground_truth_matrix_partial_flatten[:,edge])[0]
-        accuracy_per_edge_nm_icov_pm_cov[chunk,edge] = pearsonr(partial_correlations_chunk_flatten[:,chunk,edge], ground_truth_matrix_full_flatten[:,edge])[0]
-        accuracy_per_edge_nm_cov_pm_cov[chunk,edge] = pearsonr(full_covariances_chunk_flatten[:,chunk,edge], ground_truth_matrix_full_flatten[:,edge])[0]
-
-        r2_per_edge_nm_icov_pm_icov[chunk,edge] = r2_score(ground_truth_matrix_partial_flatten[:,edge], partial_correlations_chunk_flatten[:,chunk,edge])
-        r2_per_edge_nm_cov_pm_icov[chunk,edge] = r2_score(ground_truth_matrix_partial_flatten[:,edge], full_covariances_chunk_flatten[:,chunk,edge])
-        r2_per_edge_nm_icov_pm_cov[chunk,edge] = r2_score(ground_truth_matrix_full_flatten[:,edge], partial_correlations_chunk_flatten[:,chunk,edge])
-        r2_per_edge_nm_cov_pm_cov[chunk,edge] = r2_score(ground_truth_matrix_full_flatten[:,edge], full_covariances_chunk_flatten[:,chunk,edge])
-
-
-# save partial correlation matrices and accuracy
-save_dir = f"{proj_dir}/results/ICA_{n_ICs}/edge_prediction/{n_chunks}_chunks/combined"
-os.makedirs(save_dir, exist_ok=True)
-if apply_filter==1:
-    np.save(f"{static_dir}/partial_correlations_{n_chunks}_chunks_low_freq_{low_freq}".replace('.', '_')+".npy", partial_correlations_chunk)
-    np.save(f"{static_dir}/full_covariances_{n_chunks}_chunks_low_freq_{low_freq}".replace('.', '_')+".npy", full_covariances_chunk)
-else:
-    np.save(f"{static_dir}/partial_correlations_{n_chunks}_chunks.npy", partial_correlations_chunk)
-    np.save(f"{static_dir}/full_covariances_{n_chunks}_chunks.npy", full_covariances_chunk) 
-
-
-# save edge accuracies
-if apply_filter==1:
-    if n_ICs==100:
-        np.savez(f"{save_dir}/edge_prediction_all_nm_icov_pm_icov_chunks_{n_chunks}_features_used_actual_low_freq_{low_freq}".replace('.', '_')+".npz", r2_accuracy_per_edge=r2_per_edge_nm_icov_pm_icov, accuracy_per_edge=accuracy_per_edge_nm_icov_pm_icov)
-        np.savez(f"{save_dir}/edge_prediction_all_nm_cov_pm_icov_chunks_{n_chunks}_features_used_actual_low_freq_{low_freq}".replace('.', '_')+".npz", r2_accuracy_per_edge=r2_per_edge_nm_cov_pm_icov, accuracy_per_edge=accuracy_per_edge_nm_cov_pm_icov)
-        np.savez(f"{save_dir}/edge_prediction_all_nm_icov_pm_cov_chunks_{n_chunks}_features_used_actual_low_freq_{low_freq}".replace('.', '_')+".npz", r2_accuracy_per_edge=r2_per_edge_nm_icov_pm_cov, accuracy_per_edge=accuracy_per_edge_nm_icov_pm_cov)
-        np.savez(f"{save_dir}/edge_prediction_all_nm_cov_pm_cov_chunks_{n_chunks}_features_used_actual_low_freq_{low_freq}".replace('.', '_')+".npz", r2_accuracy_per_edge=r2_per_edge_nm_cov_pm_cov, accuracy_per_edge=accuracy_per_edge_nm_cov_pm_cov)
-    else:
-        np.savez(f"{save_dir}/edge_prediction_all_nm_icov_pm_icov_chunks_{n_chunks}_features_used_actual_low_freq_{low_freq}".replace('.', '_')+".npz", r2_accuracy_per_edge=r2_per_edge_nm_icov_pm_icov, accuracy_per_edge=accuracy_per_edge_nm_icov_pm_icov, partial_correlations_chunk=partial_correlations_chunk, netmats_flatten = partial_correlations_chunk_flatten.transpose(1, 0, 2), ground_truth_matrix_partial_flatten=ground_truth_matrix_partial_flatten)
-        np.savez(f"{save_dir}/edge_prediction_all_nm_cov_pm_icov_chunks_{n_chunks}_features_used_actual_low_freq_{low_freq}".replace('.', '_')+".npz", r2_accuracy_per_edge=r2_per_edge_nm_cov_pm_icov, accuracy_per_edge=accuracy_per_edge_nm_cov_pm_icov, netmats_flatten = full_covariances_chunk_flatten.transpose(1, 0, 2))
-        np.savez(f"{save_dir}/edge_prediction_all_nm_icov_pm_cov_chunks_{n_chunks}_features_used_actual_low_freq_{low_freq}".replace('.', '_')+".npz", r2_accuracy_per_edge=r2_per_edge_nm_icov_pm_cov, accuracy_per_edge=accuracy_per_edge_nm_icov_pm_cov, netmats_flatten = partial_correlations_chunk_flatten.transpose(1, 0, 2))
-        np.savez(f"{save_dir}/edge_prediction_all_nm_cov_pm_cov_chunks_{n_chunks}_features_used_actual_low_freq_{low_freq}".replace('.', '_')+".npz", r2_accuracy_per_edge=r2_per_edge_nm_cov_pm_cov, accuracy_per_edge=accuracy_per_edge_nm_cov_pm_cov, netmats_flatten = full_covariances_chunk_flatten.transpose(1, 0, 2))
-else:
-    np.savez(f"{save_dir}/edge_prediction_all_nm_icov_pm_icov_chunks_{n_chunks}_features_used_actual_with_r2.npz", r2_accuracy_per_edge=r2_per_edge_nm_icov_pm_icov, accuracy_per_edge=accuracy_per_edge_nm_icov_pm_icov, partial_correlations_chunk=partial_correlations_chunk, netmats_flatten = partial_correlations_chunk_flatten.transpose(1, 0, 2), ground_truth_matrix_partial_flatten=ground_truth_matrix_partial_flatten)
-    np.savez(f"{save_dir}/edge_prediction_all_nm_cov_pm_icov_chunks_{n_chunks}_features_used_actual_with_r2.npz", r2_accuracy_per_edge=r2_per_edge_nm_cov_pm_icov, accuracy_per_edge=accuracy_per_edge_nm_cov_pm_icov, netmats_flatten = full_covariances_chunk_flatten.transpose(1, 0, 2))
-    np.savez(f"{save_dir}/edge_prediction_all_nm_icov_pm_cov_chunks_{n_chunks}_features_used_actual_with_r2.npz", r2_accuracy_per_edge=r2_per_edge_nm_icov_pm_cov, accuracy_per_edge=accuracy_per_edge_nm_icov_pm_cov, netmats_flatten = partial_correlations_chunk_flatten.transpose(1, 0, 2))
-    np.savez(f"{save_dir}/edge_prediction_all_nm_cov_pm_cov_chunks_{n_chunks}_features_used_actual_with_r2.npz", r2_accuracy_per_edge=r2_per_edge_nm_cov_pm_cov, accuracy_per_edge=accuracy_per_edge_nm_cov_pm_cov, netmats_flatten = full_covariances_chunk_flatten.transpose(1, 0, 2))
-
+    # Save results
+    save_dir = f"{proj_dir}/results/ICA_{n_ICs}/edge_prediction/{n_chunks}_chunks/combined"
+    partial_correlation_calculation.save_results(static_dir, save_dir, n_chunks, partial_correlations_chunk, full_covariances_chunk, metrics, chunk_matrices)

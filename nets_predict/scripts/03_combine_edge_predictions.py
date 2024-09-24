@@ -13,14 +13,16 @@
 import os
 import numpy as np
 import argparse
-from nets_predict.classes.hmm import HiddenMarkovModelClass
-from nets_predict.classes.partial_correlation import PartialCorrelationClass
+import sys
 from tqdm import trange
 from sklearn.metrics import r2_score
 
-# intialise class
-HMMClass = HiddenMarkovModelClass()
-PCCClass = PartialCorrelationClass()
+
+# import my classes
+dir_name = "/gpfs3/well/win-fmrib-analysis/users/psz102/nets-predict/"
+sys.path.append(dir_name)
+from nets_predict.classes.partial_correlation import PartialCorrelationAnalysis, PartialCorrelation
+from nets_predict.classes.hmm import TimeSeriesProcessing, FeatureEngineering
 
 
 #%% Parse command line arguments
@@ -60,8 +62,10 @@ os.makedirs(save_dir, exist_ok=True)
 
 #%% Calculating stats for dynamic predictions
 model_mean = True
-n_edge = int((n_ICs*(n_ICs-1))/2)
-n_feat = HMMClass.determine_n_features(feature_type, n_ICs, n_states)
+#n_edge = int((n_ICs*(n_ICs-1))/2)
+n_edge = 4
+feature_engineering = FeatureEngineering()
+n_feat = feature_engineering.determine_n_features(feature_type, n_ICs, n_states)
 
 # load ground truth
 static_dir = f"{proj_dir}/results/ICA_{n_ICs}"
@@ -70,7 +74,8 @@ if prediction_matrix == 'icov':
 elif prediction_matrix == 'cov':
     ground_truth = np.load(f"{static_dir}/ground_truth/ground_truth_full_mean_4_sessions.npy") 
     
-ground_truth_edges = PCCClass.extract_upper_off_main_diag(ground_truth)
+partial_correlation = PartialCorrelation(ground_truth)
+ground_truth_edges = partial_correlation.extract_upper_off_main_diag()
 
 # initialise arrays
 alpha = np.zeros((n_chunk, n_fold, n_edge))
@@ -91,15 +96,7 @@ r2_accuracy_per_edge[:] = np.nan
 
 #for edge in trange(0, n_edge, desc='Saving info for edges...'):
 for edge in range(0, n_edge, 2):
-    
-    if prediction_model=='xgboost':# or prediction_model=='elastic_net':
-        edge_prediction_vars = np.load(f'{load_dir}/edge_prediction_{edge}_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{feature_type}_states_{n_states}_model_mean_{model_mean}_model_{prediction_model}.npz')
-    else: 
-        if apply_filter==1:
-            edge_prediction_vars = np.load(f'{load_dir}/edge_prediction_{edge}_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{feature_type}_states_{n_states}_model_mean_{model_mean}_low_freq_{low_freq}'.replace('.', '_')+'.npz')
-        elif apply_filter==0:
-            edge_prediction_vars = np.load(f'{load_dir}/edge_prediction_{edge}_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{feature_type}_states_{n_states}_model_mean_{model_mean}.npz')
-
+    edge_prediction_vars = np.load(f'{load_dir}/edge_prediction_{edge}_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{feature_type}_states_{n_states}_model_mean_{model_mean}_model_{prediction_model}.npz')
 
     # predicted_edges_all[j, :,:,edge] = a['predict_y']
     alpha[:, :, edge] = edge_prediction_vars['alpha']
@@ -110,12 +107,10 @@ for edge in range(0, n_edge, 2):
 
     for ifold in range(n_fold):
         for chunk in range(n_chunk):
-            first_nan_index = np.where(np.isnan(edge_prediction_vars['beta'][chunk, ifold, :]))[0][0]
-            n_feat = first_nan_index 
+            #first_nan_index = np.where(np.isnan(edge_prediction_vars['beta'][chunk, ifold, :]))[0][0]
+            #n_feat = first_nan_index
+            n_feat = edge_prediction_vars['beta'].shape[2]
             beta[chunk, ifold, edge, 0:n_feat] = edge_prediction_vars['beta'][chunk, ifold, 0:n_feat]
-        
-
-
 
 for edge in trange(0, n_edge, desc='Saving info for edges...'):
     print(edge)
@@ -126,25 +121,14 @@ for edge in trange(0, n_edge, desc='Saving info for edges...'):
             r2_accuracy_per_edge[chunk, edge] = r2_score(ground_truth_edges[:,edge], predict_y[chunk, :, edge])
 
 
-
 if prediction_model=='xgboost':# or prediction_model=='elastic_net':
-    # if apply_filter==1:
-    #     np.savez(f"{save_dir}/edge_prediction_all_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{feature_type}_states_{n_states}_model_mean_{model_mean}_low_freq_{low_freq}".replace('.', '_')+f"_with_r2_model_{prediction_model}.npz", 
-    #                 alpha=alpha, l1_ratio=l1_ratio, corr_y=corr_y, predict_y=predict_y, beta=beta, accuracy_per_edge=accuracy_per_edge, r2_accuracy_per_edge=r2_accuracy_per_edge) 
-    # else:
     np.savez(f"{save_dir}/edge_prediction_all_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{feature_type}_states_{n_states}_model_mean_{model_mean}_with_r2_model_{prediction_model}.npz", 
                 alpha=alpha, l1_ratio=l1_ratio, corr_y=corr_y, predict_y=predict_y, beta=beta, accuracy_per_edge=accuracy_per_edge, r2_accuracy_per_edge=r2_accuracy_per_edge)     
 else:
-    if apply_filter==1:
-        np.savez(f"{save_dir}/edge_prediction_all_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{feature_type}_states_{n_states}_model_mean_{model_mean}_low_freq_{low_freq}".replace('.', '_')+".npz", 
-                alpha=alpha, l1_ratio=l1_ratio, corr_y=corr_y, predict_y=predict_y, beta=beta, accuracy_per_edge=accuracy_per_edge)
-        np.savez(f"{save_dir}/edge_prediction_all_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{feature_type}_states_{n_states}_model_mean_{model_mean}_with_r2_low_freq_{low_freq}".replace('.', '_')+".npz", 
-                alpha=alpha, l1_ratio=l1_ratio, corr_y=corr_y, predict_y=predict_y, beta=beta, accuracy_per_edge=accuracy_per_edge, r2_accuracy_per_edge=r2_accuracy_per_edge)
-    elif apply_filter==0:
-        np.savez(f"{save_dir}/edge_prediction_all_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{feature_type}_states_{n_states}_model_mean_{model_mean}.npz", 
-                alpha=alpha, l1_ratio=l1_ratio, corr_y=corr_y, predict_y=predict_y, beta=beta, accuracy_per_edge=accuracy_per_edge)
-        np.savez(f"{save_dir}/edge_prediction_all_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{feature_type}_states_{n_states}_model_mean_{model_mean}_with_r2.npz", 
-                alpha=alpha, l1_ratio=l1_ratio, corr_y=corr_y, predict_y=predict_y, beta=beta, accuracy_per_edge=accuracy_per_edge, r2_accuracy_per_edge=r2_accuracy_per_edge)
+    np.savez(f"{save_dir}/edge_prediction_all_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{feature_type}_states_{n_states}_model_mean_{model_mean}.npz", 
+            alpha=alpha, l1_ratio=l1_ratio, corr_y=corr_y, predict_y=predict_y, beta=beta, accuracy_per_edge=accuracy_per_edge)
+    np.savez(f"{save_dir}/edge_prediction_all_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{feature_type}_states_{n_states}_model_mean_{model_mean}_with_r2.npz", 
+            alpha=alpha, l1_ratio=l1_ratio, corr_y=corr_y, predict_y=predict_y, beta=beta, accuracy_per_edge=accuracy_per_edge, r2_accuracy_per_edge=r2_accuracy_per_edge)
 
 
 # r2_per_edge_nm_icov_pm_icov_version2 = np.zeros((n_chunk, n_edge))

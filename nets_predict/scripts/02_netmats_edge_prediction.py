@@ -8,16 +8,22 @@
 import os
 import argparse
 import numpy as np
+import logging
+import pickle
+import time
+import sys
+#import xgboost as xgb
 from scipy.stats import pearsonr
 from sklearn.linear_model import ElasticNetCV
 from sklearn.model_selection import RepeatedKFold, KFold, GridSearchCV
-import logging
 from tqdm import trange
-from nets_predict.classes.hmm import HiddenMarkovModelClass
-import pickle
-from nets_predict.classes.partial_correlation import PartialCorrelationClass
-import time
-import xgboost as xgb
+
+
+# my imports
+dir_name = "/gpfs3/well/win-fmrib-analysis/users/psz102/nets-predict/"
+sys.path.append(dir_name)
+from nets_predict.classes.hmm import FeatureEngineering, Prediction
+from nets_predict.classes.partial_correlation import PartialCorrelation
 
 start_time = time.time()
 
@@ -67,18 +73,14 @@ n_folds = args.n_folds
 
 # initialise logger and classes
 logger = logging.getLogger("Chunk_project")
-HMMClass = HiddenMarkovModelClass()
-PartialCorrClass = PartialCorrelationClass()
+feature_engineering = FeatureEngineering()
+hmm_prediction = Prediction()
 
 #%% Set directories
 proj_dir = "/well/win-fmrib-analysis/users/psz102/nets-predict/nets_predict"
 results_dir = f"{proj_dir}/results/ICA_{n_ICs}"
 chunk_save_dir = f"{results_dir}/edge_prediction/{n_chunk}_chunks"
 os.makedirs(chunk_save_dir, exist_ok=True)
-
-
-
-
 
 #%% Load features to predict with
 # load static partial correlation matrix for chunked time series
@@ -125,7 +127,8 @@ for edge in range(network_edge, network_edge+2):
     elif prediction_matrix == 'cov':
         ground_truth = np.load(f"{results_dir}/ground_truth/ground_truth_full_mean_4_sessions.npy") 
     
-    ground_truth_edges = PartialCorrClass.extract_upper_off_main_diag(ground_truth)
+    partial_corr = PartialCorrelation(ground_truth)
+    ground_truth_edges = partial_corr.extract_upper_off_main_diag()
     y = ground_truth_edges[:, edge]
 
 
@@ -141,21 +144,7 @@ for edge in range(network_edge, network_edge+2):
         model = ElasticNetCV(l1_ratio=ratios, alphas=alphas, cv=cv, n_jobs=-1, precompute=False)
     elif prediction_model == 'xgboost':
         model = xgb.XGBRegressor(n_jobs=1)
-        # Define the parameter grid for hyperparameter tuning - 4 chunk, all edges, 0.7176705608488784, 0.8449748969562919
-        # param_grid = {
-        #     'alpha': [0, 0.1, 1, 2],  # Focus more on regularization
-        #     'lambda': [1, 5, 10],
-        #     'gamma': [0, 5, 10],
-        #     'learning_rate': [0.1,0.05],  # Lower learning rates
-        #     'max_depth': [3, 5, 7],  # Lower max depth
-        #     'min_child_weight': [1, 3, 5], 
-        #     'subsample': [0.6, 0.8], 
-        #     'colsample_bytree': [0.6, 0.8], 
-        #     #'n_estimators': [50, 100, 200]  # Slightly reduce the number of trees
-        # }
-
-        # working okay for 4 chunks
-        # Define the parameter grid for hyperparameter tuning - 4 chunk, all edges, 0.7330292123166278 0.7770012537121369, but then 0.67..., then 0.75...
+        # Define the parameter grid for hyperparameter tuning - 4 chunk, all edges
         param_grid = {
             'alpha': [1, 2, 5, 10],  # Focus more on regularization
             'lambda': [5, 10, 20],
@@ -168,33 +157,8 @@ for edge in range(network_edge, network_edge+2):
             'n_estimators': [50, 100, 200]  # Slightly reduce the number of trees
         }
 
-        # This resulting in bad training (0.8) vs test (0.5)
-        #         param_grid = {
-        #     'alpha': [0, 0.1, 0.5, 1, 2, 5],
-        #     'lambda': [1, 1.5, 2, 5, 10],
-        #     'learning_rate': [0.01, 0.05, 0.1, 0.2, 0.3],
-        #     'max_depth': [1, 2, 3, 5, 7],
-        #     'min_child_weight': [1, 3, 5],
-        #     'subsample': [0.6, 0.8, 1.0], #[0.6, 0.8, 1.0],
-        #     'colsample_bytree': [0.6, 0.8, 1.0],#, 0.8, 1.0],
-        #     'n_estimators': [100, 200, 500]
-        # }
-
-        # this specific configuration results in training (0.58) vs test (0.53)
-        # param_grid = {
-        #     'alpha': [10], # higher = less likely to overfit
-        #     'lambda': [10], # higher = less likely to overfit
-        #     'learning_rate': [0.05], # higher = more likely to overfit
-        #     'max_depth': [10], # higher = more likely to overfit
-        #     'min_child_weight': [5], # higher = less likely to overfit
-        #     'subsample': [0.7], # higher = more likely to overfit
-        #     'colsample_bytree': [0.7], # higher = more likely to overfit
-        #     'n_estimators': [50], #[100, 200, 500] # higher =more likely to overfit # Number of trees to fit
-        #     'gamma': [10]
-        # }
-
     # intialise arrays
-    n_features = HMMClass.determine_n_features(features_to_use, n_ICs, n_states)    
+    n_features = feature_engineering.determine_n_features(features_to_use, n_ICs, n_states)    
     n_sub = netmats.shape[0]
     alpha = np.zeros((n_chunk,n_folds))
     alpha[:] = np.nan 
@@ -236,11 +200,11 @@ for edge in range(network_edge, network_edge+2):
                 np.load(f"{filename}")
                 continue
 
-        X = HMMClass.get_predictor_features(netmats[:,i,:,:], hmm_features_dict[i], features_to_use, edge)
+        X = hmm_prediction.get_predictor_features(netmats[:,i,:,:], hmm_features_dict[i], features_to_use, edge)
         
         # form self edge + pca on remaining edges
         if features_to_use == 'static_pca':
-            X = HMMClass.self_predict_plus_pca(X, edge)
+            X = hmm_prediction.self_predict_plus_pca(X, edge)
         # just use the single self edge
         elif features_to_use == 'static_self_edge_only':
             X = X[:, edge].reshape(-1, 1)
@@ -257,12 +221,12 @@ for edge in range(network_edge, network_edge+2):
             y_test = y[test_index]
 
             # standardise X
-            X_train, X_test = HMMClass.standardise_train_apply_to_test(X_train, X_test)
+            X_train, X_test = hmm_prediction.standardise_train_apply_to_test(X_train, X_test)
             
             # perform PCA
             n_features_dynamic = n_features - n_ICs*(n_ICs-1)/2
             if pca and n_features_dynamic > n_states*n_ICs:
-                X_train, X_test, pca_model = HMMClass.pca_dynamic_only(X_train, X_test, n_ICs)
+                X_train, X_test, pca_model = hmm_prediction.pca_dynamic_only(X_train, X_test, n_ICs)
                 n_features = X_train.shape[1]
                 logger.info(f"Running predictions using {n_features} PCA features")
             else:
@@ -285,7 +249,6 @@ for edge in range(network_edge, network_edge+2):
 
             # Train the model using the training set
             model.fit(X_train, y_train)
-            
 
             # save chosen configuration
             if prediction_model == 'elastic_net':
@@ -294,30 +257,20 @@ for edge in range(network_edge, network_edge+2):
                 beta[i,fold,0:n_features] = model.coef_
 
             #return correlation
-            y_pred_train, correlation_train = HMMClass.evaluate_model(model, X_train, y_train, my)
-            y_pred, correlation = HMMClass.evaluate_model(model, X_test, y_test, my)
+            y_pred_train, correlation_train = hmm_prediction.evaluate_model(model, X_train, y_train, my)
+            y_pred, correlation = hmm_prediction.evaluate_model(model, X_test, y_test, my)
             predict_y_all[i,test_index] = y_pred
             corr_y[i,fold] = correlation
             corr_y_train[i,fold] = correlation_train
-            print(correlation), print(correlation_train)
             logger.info(f"Training accuracy: {correlation_train}")
             logger.info(f"Test accuracy: {correlation}")
-
-            logger.info(f"Pausing")
-            time.sleep(10)
-            
-            print(corr_y[i,fold])
 
         prediction_accuracy_chunk[i] = pearsonr(np.squeeze(predict_y_all[i,:]), np.squeeze(y))[0]
 
         print("--- %s seconds ---" % (time.time() - start_time))
         chunk_file_name = f"{chunk_save_dir}/edge_prediction_{edge}_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{features_to_use}_states_{n_states}_model_mean_{model_mean}_chunk{i}.npz"
-        #np.savez(chunk_file_name, alpha=alpha, l1_ratio=l1_ratio, corr_y=corr_y, corr_y_train=corr_y_train, predict_y=predict_y_all, chunk=i, beta=beta, prediction_accuracy_chunk=prediction_accuracy_chunk, pca=pca, pca_model=pca_model)
-        #previous_chunk_file_name = f"{chunk_save_dir}/edge_prediction_{edge}_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{features_to_use}_states_{n_states}_model_mean_{model_mean}_chunk{i-1}.npz"
-        #os.remove(previous_chunk_file_name)
     
     # save the proper edges here
-    print(corr_y) 
     logger.info(f"Saving edge pred to: {chunk_save_dir}")
 
     if apply_filter==1:

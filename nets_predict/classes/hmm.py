@@ -6,17 +6,18 @@ from osl_dynamics.analysis.modes import calc_trans_prob_matrix
 from sklearn.preprocessing import StandardScaler
 from scipy.stats import pearsonr
 from sklearn.decomposition import PCA
+from nets_predict.classes.partial_correlation import PartialCorrelation
 
 _logger = logging.getLogger("Chunk_project")
 
 class HMMInference:
-    def __init__(self, model, data):
+    def __init__(self, model, time_series):
         self.model = model
-        self.data = data
+        self.time_series = time_series
 
-    def get_inferred_parameters(self, time_series):
+    def get_inferred_parameters(self):
         """Infer parameters and return dynamic features."""
-        data = Data(time_series)
+        data = Data(self.time_series)
         _logger.info("Infer state probabilities")
         alpha = self.model.get_alpha(data)
 
@@ -36,13 +37,21 @@ class HMMInference:
         weighted_covs_dual = summary_stats['fo'][:, :, np.newaxis, np.newaxis] * covs_dual
 
         # Calculate partial correlations
-        icovs_chunk = np.array([
-            [
-                PartialCorrClass.partial_corr(covs_dual[sub, state])[1]
-                for state in range(n_states)
-            ]
-            for sub in range(n_sub)
-        ])
+        icovs_chunk = np.zeros((n_sub, n_states, n_ICs, n_ICs))  # Initialize the array with zeros
+        for sub in range(n_sub):
+            for state in range(n_states):
+                fc_matrix = covs_dual[sub, state]
+                partial_correlation = PartialCorrelation(fc_matrix)
+                icovs_chunk[sub, state, :, :] = partial_correlation.partial_corr()[1]
+
+        
+        # icovs_chunk = np.array([
+        #     [
+        #         partial_correlation.partial_corr(covs_dual[sub, state])[1]
+        #         for state in range(n_states)
+        #     ]
+        #     for sub in range(n_sub)
+        # ])
 
         # Return dictionary of all features
         return {
@@ -65,7 +74,6 @@ class HMMInference:
             'intv': modes.mean_intervals(stc),
             'sr': modes.switching_rates(stc)
         }
-
 
 class TimeSeriesProcessing:
     def split_time_series(self, data, n_chunks, n_sub=None, n_ICs=None):
@@ -97,9 +105,45 @@ class TimeSeriesProcessing:
 
         return time_series_chunk
 
+    def split_time_series_2(self, data, n_chunks, n_sub=None, n_ICs=None):
+        n_sub = n_sub or len(data.time_series())
+        if n_sub != len(data.time_series()):
+            raise ValueError("Incorrect number of subjects")
+
+        n_ICs = n_ICs or data.n_channels
+        if n_ICs != data.n_channels:
+            raise ValueError("Incorrect number of channels selected")
+
+        n_timepoints = data.time_series()[0].shape[0]
+        time_series_chunk = np.zeros((n_sub, n_chunks, n_timepoints // n_chunks, n_ICs))
+
+        for sub in range(n_sub):
+            time_series_sub = np.array_split(data.time_series()[sub], n_chunks, axis=0)
+            time_series_chunk[sub] = time_series_sub
+
+        return time_series_chunk
 
     def NormalizeData(self, data):
         return (data - np.nanmin(data)) / (np.nanmax(data) - np.nanmin(data))
+
+    def remove_bad_components(self, data):
+        n_sub = len(data.time_series())
+        n_ICs = data.time_series()[0].shape[1]
+
+        if n_ICs not in {25, 100}:
+            raise ValueError(f"Unexpected number of independent components: {n_ICs}")
+
+        good_components_indices = list(range(n_ICs))
+        session_length = 1200
+        num_sessions = 4
+        time_point_indices = np.concatenate(
+            [np.arange(i * session_length + 8, (i + 1) * session_length) for i in range(num_sessions)]
+        )
+
+        for i in range(n_sub):
+            data.time_series()[i] = data.time_series()[i][time_point_indices, good_components_indices]
+
+        return data
 
 class FeatureEngineering:
 
@@ -161,7 +205,8 @@ class FeatureEngineering:
         Reshape icovs by extracting upper off-diagonal elements and reshaping.
         Optionally replace NaNs with zeros.
         """
-        icovs_off_diag = PartialCorrClass.extract_upper_off_main_diag(icovs)
+        partial_corr = PartialCorrelation(icovs)
+        icovs_off_diag = partial_corr.extract_upper_off_main_diag()
         if nan_replace:
             icovs_off_diag = np.nan_to_num(icovs_off_diag)
         return icovs_off_diag.reshape(icovs_off_diag.shape[0], -1)
@@ -224,7 +269,6 @@ class FeatureEngineering:
     
     def _static_feature_size(self, n_ICs):
         return (n_ICs * (n_ICs - 1)) // 2
-
 
 class HMMFeatures:
     def __init__(self):
@@ -345,9 +389,11 @@ class Prediction:
     def get_predictor_features(self, netmats, hmm_features_dict, features_to_use, edge_index):
 
         if features_to_use=='static' or features_to_use=='static_pca' or features_to_use=='static_self_edge_only':
-            X = PartialCorrClass.extract_upper_off_main_diag(netmats)
+            partial_corr = PartialCorrelation(netmats)
+            X = partial_corr.extract_upper_off_main_diag()
         elif features_to_use=='static_connecting_edges':
-            row, col = PartialCorrClass.find_original_indices(edge_index, netmats)
+            partial_corr = PartialCorrelation(netmats)
+            row, col = partial_corr.find_original_indices(edge_index)
             X_incoming = netmats[:, row, :]
             X_incoming = np.delete(X_incoming, col, axis=1) # delete the self edge to avoid duplication
             X_outgoing = netmats[:, :, col]
@@ -355,9 +401,11 @@ class Prediction:
         else:
             if features_to_use=='tpms_ss_only':
                 X = self.reshape_dynamic_features(hmm_features_dict, features_to_use)
-
+                partial_corr = PartialCorrelation(netmats)
+                X_static = partial_corr.extract_upper_off_main_diag()
             else:
-                X_static = PartialCorrClass.extract_upper_off_main_diag(netmats)
+                partial_corr = PartialCorrelation(netmats)
+                X_static = partial_corr.extract_upper_off_main_diag()
 
                 # Form the design matrix of dynamic features (depending on features select in 'dynamic_add')
                 X_dynamic = self.reshape_dynamic_features(hmm_features_dict, features_to_use)
