@@ -1,4 +1,4 @@
-# Functional Connectivity Prediction Project
+# Functional Connectivity Predictions
 
 ## Overview
 This project predicts "ground truth" partial correlation matrices (i.e., functional connectivity netmats) derived from extensive brain scanning data (e.g., 60 minutes). By leveraging various predictive features, such as Hidden Markov Model (HMM) features, this project provides predictions based on shorter time spans (e.g., 5 minutes).
