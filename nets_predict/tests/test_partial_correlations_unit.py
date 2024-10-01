@@ -1,6 +1,38 @@
 import numpy as np
 import unittest
+from unittest.mock import patch
 from nets_predict.classes.partial_correlation import PartialCorrelation, PartialCorrelationAnalysis, CovarianceUtils
+
+class TestCovarianceUtils(unittest.TestCase):
+
+    def test_covariance_to_precision(self):
+        # Create a sample covariance matrix (e.g., 3x3)
+        Sigma = np.array([[4, 2, 0.6], [2, 5, 0.9], [0.6, 0.9, 3]])
+
+        # Run the function
+        precision_matrix = CovarianceUtils.covariance_to_precision(Sigma.copy(), rho=0.1)
+
+        # Check that precision matrix is symmetric
+        self.assertTrue(np.allclose(precision_matrix, precision_matrix.T))
+
+        # Check that the diagonal of Sigma has been increased by rho
+        expected_diag = np.diag(Sigma) + 0.1
+        self.assertTrue(np.allclose(np.diag(Sigma), expected_diag))
+
+    def test_fisher_transform(self):
+        # Create a sample partial correlation matrix
+        partial_corr = np.array([[1.0, 0.2], [0.2, 1.0]])
+
+        # Run the Fisher transformation
+        fisher_transformed = CovarianceUtils.fisher_transform(partial_corr)
+
+        # Check that the diagonal is still 0 after transformation (for z-scores)
+        self.assertTrue(np.allclose(np.diag(fisher_transformed), [0, 0]))
+
+        # Check if transformation of off-diagonal elements is applied correctly
+        # Calculate expected values
+        expected_fisher = 0.5 * np.log((1 + partial_corr[0, 1]) / (1 - partial_corr[0, 1])) * -18.8310
+        self.assertAlmostEqual(fisher_transformed[0, 1], expected_fisher, places=5)
 
 class TestPartialCorrelation(unittest.TestCase):
 
@@ -45,42 +77,49 @@ class TestPartialCorrelation(unittest.TestCase):
 
         self.assertAlmostEqual(m1_inv.tolist(), m2.tolist())
 
-    # def test_partial_correlation_calc(self):
 
-    #     #self, Sigma, rho=0.1, do_rtoz=-18.8310):
-    #     Sigma = np.array([[0.5, 1.5],[1.5, 4.5]])
-    #     Sigma_partial_corr = np.array([[0 , 0.75441865], [0.75441865, 0]])
-    #     Sigma_partial_corr_r2z = np.array([[ 0, 18.51336385], [18.51336385,  0]])
-    #     Sigma_precision_matrix = np.array([[ 9.06017797, -2.81946608], [-2.81946608,  1.54160175]])
+class TestPartialCorrelation(unittest.TestCase):
 
-    #     Sigma_partials = self.partial_corr.partial_corr(Sigma)
+    def setUp(self):
+        # Create a sample functional connectivity (fc) matrix
+        self.fc_matrix = np.array([[4, 2, 0.6], [2, 5, 0.9], [0.6, 0.9, 3]])
 
-    #     partial_correlations = np.round(Sigma_partials[0], 8)
-    #     partial_correlations_r2z = np.round(Sigma_partials[1], 8)
-    #     precision_matrix = np.round(Sigma_partials[2], 8)
+        # Instantiate the PartialCorrelation object
+        self.partial_corr_obj = PartialCorrelation(self.fc_matrix, rho=0.1, scaling_factor=-18.8310)
 
-    #     self.assertEqual(Sigma_partial_corr.tolist(), partial_correlations.tolist())
-    #     self.assertEqual(Sigma_partial_corr_r2z.tolist(), partial_correlations_r2z.tolist())
-    #     self.assertEqual(Sigma_precision_matrix.tolist(), precision_matrix.tolist())
+    def test_partial_corr(self):
+        # Run the partial correlation method
+        partial_corr, partial_corr_r2z, precision = self.partial_corr_obj.partial_corr()
 
+        # Check that the precision matrix is symmetric
+        self.assertTrue(np.allclose(precision, precision.T))
 
-    # def test_extract_upper_diag_array(self):
-    #     # Using the instance from setUpClass
-    #     hmm_covariances = np.array([[[1, 7, 0],[5, 2, 0],[7, 7, 1]],
-    #                                  [[6, 0, 1],[4, 3, 0],[6, 5, 8]],
-    #                                  [[6, 5, 4],[3, 5, 0],[0, 6, 6]],
-    #                                  [[9, 1, 0],[5, 0, 2],[5, 1, 5]]])
+        # Check that the diagonal of partial_corr is 0
+        self.assertTrue(np.allclose(np.diag(partial_corr), [0, 0, 0]))
 
-    #     hmm_covariances_upper_diag_target = np.array([[7, 0, 0], [0, 1, 0], [5, 4, 0], [1, 0, 2]])
-        
-    #     hmm_covariances_upper_diag_fun = self.partial_corr_analysis.extract_upper_off_main_diag(hmm_covariances)
-    #     np.testing.assert_array_equal(hmm_covariances_upper_diag_fun, hmm_covariances_upper_diag_target)
+        # Check the transformation on off-diagonal elements
+        expected_fisher = 0.5 * np.log((1 + partial_corr[0, 1]) / (1 - partial_corr[0, 1])) * -18.8310
+        self.assertAlmostEqual(partial_corr_r2z[0, 1], expected_fisher, places=5)
 
-    #     hmm_covariances_2 = np.array([[0.5, 1.5],[1.5, 4.5]])
-    #     hmm_covariances_upper_diag_target_2 = np.array([1.5])
-    #     hmm_covariances_upper_diag_fun_2 = self.partial_corr_analysis.extract_upper_off_main_diag(hmm_covariances_2)
-    #     np.testing.assert_array_equal(hmm_covariances_upper_diag_fun_2, hmm_covariances_upper_diag_target_2)
+    def test_extract_upper_off_main_diag(self):
+        # Run the extraction of the upper diagonal
+        upper_off_diag = self.partial_corr_obj.extract_upper_off_main_diag()
 
+        # Check the length of the result (for 3x3 matrix, upper diag has 3 elements)
+        self.assertEqual(len(upper_off_diag), 3)
+
+        # Ensure the result matches expected upper off-diagonal values
+        expected_upper_diag = np.array([2, 0.6, 0.9])
+        np.testing.assert_array_equal(upper_off_diag, expected_upper_diag)
+
+    def test_find_original_indices(self):
+        # Run the method to find original indices for an edge index
+        edge_index = 1  # Second element in upper diagonal
+        row, col = self.partial_corr_obj.find_original_indices(edge_index)
+
+        # Check that the row, col corresponds to the second element in the upper triangle
+        self.assertEqual(row, 0)
+        self.assertEqual(col, 2)
 
 if __name__ == '__main__':
     unittest.main()

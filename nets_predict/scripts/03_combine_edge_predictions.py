@@ -31,8 +31,8 @@ parser.add_argument("n_ICs", type=int, help='No. IC components of brain parcella
 parser.add_argument("n_chunk", type=int, help='How many chunks was the data divided into?', choices = [2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60, 120])
 parser.add_argument("feature_type", type=str, help='Which features were used to run the prediction? fc, pc, means, tpms_ss, tpms_ss_only, static')
 parser.add_argument("--prediction_model", default = 'elastic_net', type = str, help = 'Which prediction method to use?', choices = ['elastic_net','xgboost'])
-parser.add_argument("--apply_filter", default=0, type=int, help='Was a Butterworth filter applied to the data?', choices = [0, 1])
-parser.add_argument("--low_freq", default=0, type=float, help='What frequency filter was used for the highpass?')
+# parser.add_argument("--apply_filter", default=0, type=int, help='Was a Butterworth filter applied to the data?', choices = [0, 1])
+# parser.add_argument("--low_freq", default=0, type=float, help='What frequency filter was used for the highpass?')
 parser.add_argument("--n_fold", default=10, type=int, help='How many folds were used for the cross-validation?', choices = [10])
 parser.add_argument("--n_sub", default=1003, type=int, help='How many subjects were predictions run for?', choices = [1003])
 parser.add_argument("--n_states", default=0, type=int, help='How many states were used for the HMM?')
@@ -48,11 +48,7 @@ n_sub = args.n_sub
 n_states = args.n_states
 network_matrix = args.network_matrix
 prediction_matrix = args.prediction_matrix
-apply_filter = args.apply_filter
 prediction_model = args.prediction_model
-if apply_filter==1:
-   low_freq = args.low_freq
-   low_freq = float(np.round(low_freq, 3))
 
 #%% Set directories
 proj_dir = '/gpfs3/well/win-fmrib-analysis/users/psz102/nets-predict/nets_predict'
@@ -129,22 +125,3 @@ else:
             alpha=alpha, l1_ratio=l1_ratio, corr_y=corr_y, predict_y=predict_y, beta=beta, accuracy_per_edge=accuracy_per_edge)
     np.savez(f"{save_dir}/edge_prediction_all_nm_{network_matrix}_pm_{prediction_matrix}_chunks_{n_chunk}_features_used_{feature_type}_states_{n_states}_model_mean_{model_mean}_with_r2.npz", 
             alpha=alpha, l1_ratio=l1_ratio, corr_y=corr_y, predict_y=predict_y, beta=beta, accuracy_per_edge=accuracy_per_edge, r2_accuracy_per_edge=r2_accuracy_per_edge)
-
-
-# r2_per_edge_nm_icov_pm_icov_version2 = np.zeros((n_chunk, n_edge))
-# r2_per_edge_nm_icov_pm_icov_version2_pred = np.zeros((n_chunk, n_edge))
-
-# ground_truth_matrix_partial_flatten = feature_prediction_dict['actual']['ground_truth_matrix_partial_flatten']
-# netmats_flatten = feature_prediction_dict['actual']['netmats_flatten']
-
-# for edge in range(n_edge):
-#     print(edge)
-#     for chunk in range(n_chunk):
-#         r2_per_edge_nm_icov_pm_icov_version2[chunk,edge] = r2_score(ground_truth_matrix_partial_flatten[:,edge], feature_prediction_dict['actual']['netmats_flatten'][chunk,:,edge])
-#         r2_per_edge_nm_icov_pm_icov_version2_pred[chunk,edge] = r2_score(ground_truth_matrix_partial_flatten[:,edge], feature_prediction_dict['static']['predict_y'][chunk,:,edge])
-# delete files which made up the individual edge predictions which we have now combined
-
-
-
-
-

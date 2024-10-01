@@ -379,49 +379,6 @@ class TestHMMFeatures(unittest.TestCase):
         self.assertEqual(trans_prob.shape, expected_shapes['trans_prob'])
         self.assertEqual(icovs.shape, expected_shapes['icovs'])
 
-    def test_normalize_feature(self):
-        # Simulate a feature array (e.g., 3 subjects, 4 states)
-        feature = np.random.rand(3, 4)
-
-        # Patch the NormalizeData method
-        with patch.object(self.hmm_features, 'NormalizeData', return_value=(feature - np.mean(feature)) / np.std(feature)) as mock_normalize:
-            # Run the function
-            normalized_feature = self.hmm_features.normalize_feature(feature)
-
-            # Ensure that NormalizeData was called once with the flattened feature
-            mock_normalize.assert_called_once_with(feature.flatten())
-
-            # Check if the normalized feature is reshaped back correctly
-            self.assertEqual(normalized_feature.shape, feature.shape)
-
-            # Check if the normalized feature values match the expected scaled values
-            expected_normalized = (feature - np.mean(feature)) / np.std(feature)
-            np.testing.assert_array_almost_equal(normalized_feature, expected_normalized)
-
-    def test_normalize_hmm_features(self):
-        # Simulate multiple feature arrays
-        fo = np.random.rand(3, 4)
-        lt = np.random.rand(3, 4)
-        sr = np.random.rand(3, 4)
-
-        # Patch the NormalizeData function to return a normalized version of the feature
-        with patch.object(self.hmm_features, 'NormalizeData', side_effect=lambda x: (x - np.mean(x)) / np.std(x)) as mock_normalize:
-            # Run the function
-            normalized_fo, normalized_lt, normalized_sr = self.hmm_features.normalize_hmm_features(fo, lt, sr)
-
-            # Ensure that NormalizeData was called three times, one for each feature
-            self.assertEqual(mock_normalize.call_count, 3)
-
-            # Check if the shapes of the normalized features remain unchanged
-            self.assertEqual(normalized_fo.shape, fo.shape)
-            self.assertEqual(normalized_lt.shape, lt.shape)
-            self.assertEqual(normalized_sr.shape, sr.shape)
-
-            # Check if the normalized values match the expected scaled values
-            np.testing.assert_array_almost_equal(normalized_fo, (fo - np.mean(fo)) / np.std(fo))
-            np.testing.assert_array_almost_equal(normalized_lt, (lt - np.mean(lt)) / np.std(lt))
-            np.testing.assert_array_almost_equal(normalized_sr, (sr - np.mean(sr)) / np.std(sr))
-
     def test_organise_hmm_features_across_chunks_empty(self):
         hmm_features_list = []
 

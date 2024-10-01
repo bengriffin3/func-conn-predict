@@ -325,7 +325,11 @@ class Prediction:
         """Apply PCA only to dynamic features of the data."""
         
         # Separate static and dynamic features
-        n_static_features = self.determine_n_features('static', n_ICs)
+        from nets_predict.classes.hmm import FeatureEngineering
+        
+        feature_engineering = FeatureEngineering()
+
+        n_static_features = feature_engineering.determine_n_features('static', n_ICs)
         X_train_static = X_train[:, :n_static_features]
         X_test_static = X_test[:, :n_static_features]
         X_train_dynamic = X_train[:, n_static_features:]

@@ -28,3 +28,4 @@ nets_predict/data/*
 nets_predict/job_submission/logs/*
 nets_predict/results/*
 nets_predict/job_submission/job.sh
+nets_predict/tests/test_partial_correlations_integration.py

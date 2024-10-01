@@ -22,10 +22,17 @@ class CovarianceUtils:
         R_inv = np.linalg.inv(R)
         return np.transpose(R_inv) @ R_inv
 
+    # @staticmethod
+    # def fisher_transform(partial_corr, scaling_factor=-18.8310):
+    #     """Apply Fisher transformation and scale z-scores."""
+    #     partial_corr_r2z = 0.5 * np.log((1 + partial_corr) / (1 - partial_corr))
+    #     return partial_corr_r2z * (-scaling_factor)
+
     @staticmethod
     def fisher_transform(partial_corr, scaling_factor=-18.8310):
         """Apply Fisher transformation and scale z-scores."""
         partial_corr_r2z = 0.5 * np.log((1 + partial_corr) / (1 - partial_corr))
+        np.fill_diagonal(partial_corr_r2z, 0)  # Set diagonal to 0
         return partial_corr_r2z * (-scaling_factor)
 
 class PartialCorrelation:
