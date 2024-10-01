@@ -44,15 +44,6 @@ class HMMInference:
                 partial_correlation = PartialCorrelation(fc_matrix)
                 icovs_chunk[sub, state, :, :] = partial_correlation.partial_corr()[1]
 
-        
-        # icovs_chunk = np.array([
-        #     [
-        #         partial_correlation.partial_corr(covs_dual[sub, state])[1]
-        #         for state in range(n_states)
-        #     ]
-        #     for sub in range(n_sub)
-        # ])
-
         # Return dictionary of all features
         return {
             "fo_chunk": summary_stats['fo'],
@@ -147,7 +138,7 @@ class TimeSeriesProcessing:
 
 class FeatureEngineering:
 
-    def intialise_trans_prob(self, trans_prob_diag, n_states):
+    def initialise_trans_prob(self, trans_prob_diag, n_states):
             
         initial_trans_prob = np.ones([n_states, n_states])
         np.fill_diagonal(initial_trans_prob, trans_prob_diag)
