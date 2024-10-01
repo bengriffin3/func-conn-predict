@@ -1,7 +1,7 @@
 [project]
-name = "nets_predict"
+name = "func_conn_predict"
 version = "0.1.0"
-description = "My small project"
+description = "Functional Connectivity Predction (i.e., netmats)"
 
 [build-system]
 build-backend = "flit_core.buildapi"

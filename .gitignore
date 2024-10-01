@@ -23,10 +23,10 @@ Icon[^M]
 *.egg-info
 
 # Project files
-nets_predict/archive/*
-nets_predict/data/*
-nets_predict/job_submission/logs/*
-nets_predict/results/*
-nets_predict/plots/*
-nets_predict/job_submission/job.sh
-nets_predict/tests/test_partial_correlations_integration.py
+func_conn_predict/archive/*
+func_conn_predict/data/*
+func_conn_predict/job_submission/logs/*
+func_conn_predict/results/*
+func_conn_predict/plots/*
+func_conn_predict/job_submission/job.sh
+func_conn_predict/tests/test_partial_correlations_integration.py

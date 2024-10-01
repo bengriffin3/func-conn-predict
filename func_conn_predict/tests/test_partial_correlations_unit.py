@@ -3,7 +3,8 @@ import unittest
 import tempfile
 import os
 from unittest.mock import patch
-from nets_predict.classes.partial_correlation import PartialCorrelation, PartialCorrelationAnalysis, CovarianceUtils, GroundTruthPreparation, PartialCorrelationCalculation
+#from nets_predict.classes.partial_correlation import PartialCorrelation, PartialCorrelationAnalysis, CovarianceUtils, GroundTruthPreparation, PartialCorrelationCalculation
+from func_conn_predict.classes.partial_correlation import PartialCorrelation, PartialCorrelationAnalysis, CovarianceUtils, GroundTruthPreparation, PartialCorrelationCalculation
 
 class TestCovarianceUtils(unittest.TestCase):
 

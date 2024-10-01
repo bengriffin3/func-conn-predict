@@ -1,7 +1,7 @@
 import numpy as np
 import unittest
 from unittest.mock import patch, MagicMock
-from nets_predict.classes.hmm import HMMInference, TimeSeriesProcessing, FeatureEngineering, HMMFeatures, Prediction
+from func_conn_predict.classes.hmm import HMMInference, TimeSeriesProcessing, FeatureEngineering, HMMFeatures, Prediction
 from sklearn.linear_model import LinearRegression
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler

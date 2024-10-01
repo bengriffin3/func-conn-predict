@@ -6,7 +6,7 @@ from osl_dynamics.analysis.modes import calc_trans_prob_matrix
 from sklearn.preprocessing import StandardScaler
 from scipy.stats import pearsonr
 from sklearn.decomposition import PCA
-from nets_predict.classes.partial_correlation import PartialCorrelation
+from func_conn_predict.classes.partial_correlation import PartialCorrelation
 
 _logger = logging.getLogger("Chunk_project")
 
