@@ -38,7 +38,7 @@ class TestFeatureEngineering(unittest.TestCase):
         self.assertEqual(result.shape, expected_shape)
 
     # Test for reshape_dynamic_features
-    @patch('nets_predict.classes.partial_correlation.PartialCorrelation')
+    @patch('func_conn_predict.classes.partial_correlation.PartialCorrelation')
     def test_reshape_dynamic_features_fc(self, mock_partial_correlation):
         hmm_features_dict = {
             'icovs_chunk': np.random.rand(10, 25, 25),
@@ -58,7 +58,7 @@ class TestFeatureEngineering(unittest.TestCase):
         self.assertEqual(result.shape, expected_shape)
 
     # Test for reshape_icovs
-    @patch('nets_predict.classes.partial_correlation.PartialCorrelation')
+    @patch('func_conn_predict.classes.partial_correlation.PartialCorrelation')
     def test_reshape_icovs(self, mock_partial_correlation):
         icovs = np.random.rand(10, 25, 25)
         mock_partial_correlation.return_value.extract_upper_off_main_diag.return_value = np.random.rand(10, 300)
@@ -67,7 +67,7 @@ class TestFeatureEngineering(unittest.TestCase):
         self.assertEqual(result.shape, (10, 300))
 
     # Test for concatenate_all
-    @patch('nets_predict.classes.partial_correlation.PartialCorrelation')
+    @patch('func_conn_predict.classes.partial_correlation.PartialCorrelation')
     def test_concatenate_all(self, mock_partial_correlation):
         icovs = np.random.rand(10, 25, 25)
         covs = np.random.rand(10, 25, 25)

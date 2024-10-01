@@ -325,7 +325,7 @@ class Prediction:
         """Apply PCA only to dynamic features of the data."""
         
         # Separate static and dynamic features
-        from nets_predict.classes.hmm import FeatureEngineering
+        from func_conn_predict.classes.hmm import FeatureEngineering
         
         feature_engineering = FeatureEngineering()
 

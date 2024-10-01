@@ -162,7 +162,7 @@ class PartialCorrelationCalculation:
 
     def calculate_partial_correlations_chunks(self, data, n_chunks):
         """Calculates partial correlations for data chunks."""
-        from nets_predict.classes.hmm import TimeSeriesProcessing
+        from func_conn_predict.classes.hmm import TimeSeriesProcessing
         
         time_series_processing = TimeSeriesProcessing()
         time_series_chunk = time_series_processing.split_time_series(data, n_chunks)
