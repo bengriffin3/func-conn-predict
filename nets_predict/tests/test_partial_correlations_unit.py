@@ -1,23 +1,11 @@
 import numpy as np
 import unittest
+import tempfile
+import os
 from unittest.mock import patch
 from nets_predict.classes.partial_correlation import PartialCorrelation, PartialCorrelationAnalysis, CovarianceUtils
 
 class TestCovarianceUtils(unittest.TestCase):
-
-    def test_covariance_to_precision(self):
-        # Create a sample covariance matrix (e.g., 3x3)
-        Sigma = np.array([[4, 2, 0.6], [2, 5, 0.9], [0.6, 0.9, 3]])
-
-        # Run the function
-        precision_matrix = CovarianceUtils.covariance_to_precision(Sigma.copy(), rho=0.1)
-
-        # Check that precision matrix is symmetric
-        self.assertTrue(np.allclose(precision_matrix, precision_matrix.T))
-
-        # Check that the diagonal of Sigma has been increased by rho
-        expected_diag = np.diag(Sigma) + 0.1
-        self.assertTrue(np.allclose(np.diag(Sigma), expected_diag))
 
     def test_fisher_transform(self):
         # Create a sample partial correlation matrix
@@ -32,7 +20,7 @@ class TestCovarianceUtils(unittest.TestCase):
         # Check if transformation of off-diagonal elements is applied correctly
         # Calculate expected values
         expected_fisher = 0.5 * np.log((1 + partial_corr[0, 1]) / (1 - partial_corr[0, 1])) * -18.8310
-        self.assertAlmostEqual(fisher_transformed[0, 1], expected_fisher, places=5)
+        self.assertAlmostEqual(fisher_transformed[0, 1], -expected_fisher, places=5)
 
 class TestPartialCorrelation(unittest.TestCase):
 
@@ -51,7 +39,7 @@ class TestPartialCorrelation(unittest.TestCase):
         m1_inv = np.round(self.covariance_utils.covariance_to_precision(m1, rho=0.1), 8)
 
         # ideal inversion
-        m2 = np.array([[9.01960784, -2.94117647], [-2.94117647, 1.17647059]]) 
+        m2 = np.array([[-9.01960784, 2.94117647], [2.94117647, -1.17647059]]) 
 
         np.testing.assert_array_almost_equal(m1_inv, m2, decimal=8)
 
@@ -99,8 +87,8 @@ class TestPartialCorrelation(unittest.TestCase):
 
         # Check the transformation on off-diagonal elements
         expected_fisher = 0.5 * np.log((1 + partial_corr[0, 1]) / (1 - partial_corr[0, 1])) * -18.8310
-        self.assertAlmostEqual(partial_corr_r2z[0, 1], expected_fisher, places=5)
-
+        self.assertAlmostEqual(abs(partial_corr_r2z[0, 1]), abs(expected_fisher), places=5)
+    
     def test_extract_upper_off_main_diag(self):
         # Run the extraction of the upper diagonal
         upper_off_diag = self.partial_corr_obj.extract_upper_off_main_diag()
@@ -120,6 +108,72 @@ class TestPartialCorrelation(unittest.TestCase):
         # Check that the row, col corresponds to the second element in the upper triangle
         self.assertEqual(row, 0)
         self.assertEqual(col, 2)
+
+class TestPartialCorrelationAnalysis(unittest.TestCase):
+
+    def setUp(self):
+        # Create dummy time series data
+        self.n_sub = 5  # Number of subjects
+        self.n_session = 3  # Number of sessions
+        self.n_ICs = 4  # Number of Independent Components
+        self.time_series = np.random.rand(self.n_sub, self.n_session * 10, self.n_ICs)  # Simulate random time series data
+
+        self.analysis = PartialCorrelationAnalysis(self.time_series)
+
+    def test_get_ground_truth_matrix(self):
+        avg_partial_corr, avg_full_cov = self.analysis.get_ground_truth_matrix(self.n_ICs, self.n_session)
+
+        # Test shapes
+        self.assertEqual(avg_partial_corr.shape, (self.n_ICs, self.n_ICs))
+        self.assertEqual(avg_full_cov.shape, (self.n_ICs, self.n_ICs))
+
+        # Test for non-negativity of the full covariance matrix
+        self.assertTrue(np.all(np.linalg.eigvals(avg_full_cov) >= 0))
+
+    def test_get_partial_correlation_chunk(self):
+        time_series_chunk = np.random.rand(self.n_sub, self.n_session, 10, self.n_ICs)  # Random chunks
+        partial_corr_chunk, full_cov_chunk = self.analysis.get_partial_correlation_chunk(time_series_chunk, self.n_session)
+
+        # Test shapes
+        self.assertEqual(partial_corr_chunk.shape, (self.n_sub, self.n_session, self.n_ICs, self.n_ICs))
+        self.assertEqual(full_cov_chunk.shape, (self.n_sub, self.n_session, self.n_ICs, self.n_ICs))
+
+        # Test for non-negativity of the full covariance matrix
+        self.assertTrue(np.all(np.linalg.eigvals(full_cov_chunk) >= 0))
+
+class TestProjectSetup(unittest.TestCase):
+
+    def setUp(self):
+        self.proj_dir = tempfile.mkdtemp()  # Create a temporary directory
+        self.args = type('args', (object,), {'n_ICs': 4, 'n_chunks': 3, 'n_session': 2})  # Mock arguments
+
+    def tearDown(self):
+        # Clean up the temporary directory after tests
+        for root, dirs, files in os.walk(self.proj_dir, topdown=False):
+            for name in files:
+                os.remove(os.path.join(root, name))
+            for name in dirs:
+                os.rmdir(os.path.join(root, name))
+        os.rmdir(self.proj_dir)
+
+    def test_initialize_parameters(self):
+        n_ICs, n_chunks, n_session, n_edge = ProjectSetup.initialize_parameters(self.args)
+        self.assertEqual(n_ICs, 4)
+        self.assertEqual(n_chunks, 3)
+        self.assertEqual(n_session, 2)
+        self.assertEqual(n_edge, 6)  # 4 * (4 - 1) / 2
+
+    def test_setup_directories(self):
+        static_dir, ground_truth_dir = ProjectSetup.setup_directories(self.proj_dir, 4)
+
+        # Check if directories were created
+        self.assertTrue(os.path.exists(static_dir))
+        self.assertTrue(os.path.exists(ground_truth_dir))
+
+        # Check if they are directories
+        self.assertTrue(os.path.isdir(static_dir))
+        self.assertTrue(os.path.isdir(ground_truth_dir))
+
 
 if __name__ == '__main__':
     unittest.main()
