@@ -2,6 +2,11 @@ import numpy as np
 import unittest
 from unittest.mock import patch, MagicMock
 from nets_predict.classes.hmm import HMMInference, TimeSeriesProcessing, FeatureEngineering, HMMFeatures, Prediction
+from sklearn.linear_model import LinearRegression
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+from scipy.stats import pearsonr
+
 
 class TestFeatureEngineering(unittest.TestCase):
 
@@ -224,6 +229,97 @@ class TestFeatureEngineering(unittest.TestCase):
         expected_result = 6
 
         self.assertEqual(result, expected_result)
+
+class TestPredictionClass(unittest.TestCase):
+
+    def setUp(self):
+        self.prediction = Prediction()
+
+    def test_standardise_train_apply_to_test(self):
+        X_train = np.random.rand(100, 10)
+        X_test = np.random.rand(20, 10)
+        X_train_std, X_test_std = self.prediction.standardise_train_apply_to_test(X_train, X_test)
+        
+        # Check if the result has the same shape
+        self.assertEqual(X_train_std.shape, X_train.shape)
+        self.assertEqual(X_test_std.shape, X_test.shape)
+        
+        # Check if the mean of the training data is 0 and std deviation is 1
+        np.testing.assert_almost_equal(np.mean(X_train_std, axis=0), np.zeros(10), decimal=5)
+        np.testing.assert_almost_equal(np.std(X_train_std, axis=0), np.ones(10), decimal=5)
+
+    def test_evaluate_model(self):
+        model = MagicMock()
+        X_test = np.random.rand(50, 10)
+        y_test = np.random.rand(50)
+        model.predict.return_value = np.random.rand(50)
+        
+        y_pred, corr = self.prediction.evaluate_model(model, X_test, y_test, 0)
+        
+        # Check if the predicted values match the model's predictions
+        np.testing.assert_array_equal(y_pred, model.predict(X_test))
+        
+        # Check if the correlation is calculated
+        expected_corr = pearsonr(y_test.squeeze(), y_pred.squeeze())[0]
+        self.assertAlmostEqual(corr, expected_corr)
+
+    def test_pca_dynamic_only(self):
+        X_train = np.random.rand(100, 50)
+        X_test = np.random.rand(20, 50)
+        n_ICs = 5
+
+        # Use the PCA transformation
+        X_train_combined, X_test_combined, pca_model = self.prediction.pca_dynamic_only(X_train, X_test, n_ICs)
+        
+        # Check the combined shape
+        self.assertEqual(X_train_combined.shape[0], X_train.shape[0])
+        self.assertEqual(X_test_combined.shape[0], X_test.shape[0])
+
+        # Check if PCA model was fitted correctly
+        self.assertTrue(hasattr(pca_model, 'components_'))
+
+    def test_self_predict_plus_pca(self):
+        X = np.random.rand(100, 10)
+        edge_index = 3
+        
+        # Run PCA and preserve the self edge
+        X_combined = self.prediction.self_predict_plus_pca(X, edge_index)
+        
+        # Check if the self edge is still preserved
+        self.assertTrue(np.all(X_combined[:, 0] == X[:, edge_index]))
+
+        # Check if the number of features matches after PCA transformation
+        self.assertEqual(X_combined.shape[0], X.shape[0])
+
+    def test_get_predictor_features_static(self):
+        netmats = np.random.rand(100, 10, 10)
+        hmm_features_dict = {}
+        edge_index = 0
+        
+        partial_corr_mock = MagicMock()
+        PartialCorrelation = MagicMock(return_value=partial_corr_mock)
+        partial_corr_mock.extract_upper_off_main_diag.return_value = np.random.rand(100, 45)
+
+        X = self.prediction.get_predictor_features(netmats, hmm_features_dict, 'static', edge_index)
+        
+        # Check if static features were extracted correctly
+        self.assertEqual(X.shape[0], 100)
+
+    def test_get_predictor_features_static_self_edge(self):
+        netmats = np.random.rand(100, 10, 10)
+        hmm_features_dict = {}
+        edge_index = 3
+        
+        partial_corr_mock = MagicMock()
+        PartialCorrelation = MagicMock(return_value=partial_corr_mock)
+        partial_corr_mock.extract_upper_off_main_diag.return_value = np.random.rand(100, 45)
+
+        X = self.prediction.get_predictor_features(netmats, hmm_features_dict, 'static_self_edge_only', edge_index)
+        
+        # Check if the correct shape of predictor matrix was returned
+        self.assertEqual(X.shape[0], 100)
+        self.assertEqual(X.shape[1], 45)
+
 
 if __name__ == '__main__':
     unittest.main()
