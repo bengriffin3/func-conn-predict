@@ -3,7 +3,7 @@ import unittest
 import tempfile
 import os
 from unittest.mock import patch
-from nets_predict.classes.partial_correlation import PartialCorrelation, PartialCorrelationAnalysis, CovarianceUtils
+from nets_predict.classes.partial_correlation import PartialCorrelation, PartialCorrelationAnalysis, CovarianceUtils, GroundTruthPreparation, PartialCorrelationCalculation
 
 class TestCovarianceUtils(unittest.TestCase):
 
@@ -120,16 +120,6 @@ class TestPartialCorrelationAnalysis(unittest.TestCase):
 
         self.analysis = PartialCorrelationAnalysis(self.time_series)
 
-    def test_get_ground_truth_matrix(self):
-        avg_partial_corr, avg_full_cov = self.analysis.get_ground_truth_matrix(self.n_ICs, self.n_session)
-
-        # Test shapes
-        self.assertEqual(avg_partial_corr.shape, (self.n_ICs, self.n_ICs))
-        self.assertEqual(avg_full_cov.shape, (self.n_ICs, self.n_ICs))
-
-        # Test for non-negativity of the full covariance matrix
-        self.assertTrue(np.all(np.linalg.eigvals(avg_full_cov) >= 0))
-
     def test_get_partial_correlation_chunk(self):
         time_series_chunk = np.random.rand(self.n_sub, self.n_session, 10, self.n_ICs)  # Random chunks
         partial_corr_chunk, full_cov_chunk = self.analysis.get_partial_correlation_chunk(time_series_chunk, self.n_session)
@@ -141,38 +131,121 @@ class TestPartialCorrelationAnalysis(unittest.TestCase):
         # Test for non-negativity of the full covariance matrix
         self.assertTrue(np.all(np.linalg.eigvals(full_cov_chunk) >= 0))
 
-class TestProjectSetup(unittest.TestCase):
+class TestGroundTruthPreparation(unittest.TestCase):
 
-    def setUp(self):
-        self.proj_dir = tempfile.mkdtemp()  # Create a temporary directory
-        self.args = type('args', (object,), {'n_ICs': 4, 'n_chunks': 3, 'n_session': 2})  # Mock arguments
+    @patch('numpy.save')
+    def test_prepare_ground_truth_matrices(self, mock_save):
+        # Mock the required classes and methods
+        data_mock = MagicMock()
+        data_mock.time_series.return_value = np.random.rand(10, 5)  # Example time series data
+        data_mock.n_channels = 5
+        n_session = 3
+        ground_truth_dir = '/mock/directory'
 
-    def tearDown(self):
-        # Clean up the temporary directory after tests
-        for root, dirs, files in os.walk(self.proj_dir, topdown=False):
-            for name in files:
-                os.remove(os.path.join(root, name))
-            for name in dirs:
-                os.rmdir(os.path.join(root, name))
-        os.rmdir(self.proj_dir)
+        # Create an instance of the class
+        gtp = GroundTruthPreparation()
 
-    def test_initialize_parameters(self):
-        n_ICs, n_chunks, n_session, n_edge = ProjectSetup.initialize_parameters(self.args)
-        self.assertEqual(n_ICs, 4)
-        self.assertEqual(n_chunks, 3)
-        self.assertEqual(n_session, 2)
-        self.assertEqual(n_edge, 6)  # 4 * (4 - 1) / 2
+        # Call the method
+        ground_truth_matrix_partial, ground_truth_matrix_full = gtp.prepare_ground_truth_matrices(data_mock, n_session, ground_truth_dir)
 
-    def test_setup_directories(self):
-        static_dir, ground_truth_dir = ProjectSetup.setup_directories(self.proj_dir, 4)
+        # Check if the matrices are returned correctly
+        self.assertEqual(ground_truth_matrix_partial.shape, (5, 5))  # Adjust dimensions based on expected output
+        self.assertEqual(ground_truth_matrix_full.shape, (5, 5))
 
-        # Check if directories were created
-        self.assertTrue(os.path.exists(static_dir))
-        self.assertTrue(os.path.exists(ground_truth_dir))
+        # Ensure the save function was called with the correct arguments
+        mock_save.assert_any_call(f"{ground_truth_dir}/ground_truth_partial_mean_{n_session}_sessions.npy", ground_truth_matrix_partial)
+        mock_save.assert_any_call(f"{ground_truth_dir}/ground_truth_full_mean_{n_session}_sessions.npy", ground_truth_matrix_full)
 
-        # Check if they are directories
-        self.assertTrue(os.path.isdir(static_dir))
-        self.assertTrue(os.path.isdir(ground_truth_dir))
+    def test_flatten_matrices(self):
+        # Prepare mock matrices
+        ground_truth_matrix_partial = np.random.rand(5, 5)
+        ground_truth_matrix_full = np.random.rand(5, 5)
+
+        # Create an instance of the class
+        gtp = GroundTruthPreparation()
+
+        # Call the method
+        flattened_partial, flattened_full = gtp.flatten_matrices(ground_truth_matrix_partial, ground_truth_matrix_full)
+
+        # Check shapes of the flattened matrices
+        self.assertEqual(flattened_partial.shape, (10,))  # Example expected shape for upper triangular flattening
+        self.assertEqual(flattened_full.shape, (10,))  # Same as above
+
+class TestPartialCorrelationCalculation(unittest.TestCase):
+
+    @patch('nets_predict.classes.hmm.TimeSeriesProcessing.split_time_series')
+    @patch('nets_predict.classes.PartialCorrelationAnalysis.get_partial_correlation_chunk')
+    def test_calculate_partial_correlations_chunks(self, mock_get_partial_correlation_chunk, mock_split_time_series):
+        # Mock data
+        data_mock = MagicMock()
+        data_mock.time_series.return_value = np.random.rand(100, 10)  # Example time series data
+
+        n_chunks = 5
+        mock_split_time_series.return_value = [np.random.rand(20, 10) for _ in range(n_chunks)]  # Mocked chunked data
+        mock_get_partial_correlation_chunk.return_value = (np.random.rand(10, n_chunks, 10), np.random.rand(10, n_chunks, 10))
+
+        # Create an instance of the class
+        pcc = PartialCorrelationCalculation()
+
+        # Call the method
+        partial_correlations_chunk, full_covariances_chunk, partial_correlations_chunk_flatten, full_covariances_chunk_flatten = pcc.calculate_partial_correlations_chunks(data_mock, n_chunks)
+
+        # Check shapes of the returned matrices
+        self.assertEqual(partial_correlations_chunk.shape, (10, n_chunks, 10))
+        self.assertEqual(full_covariances_chunk.shape, (10, n_chunks, 10))
+        self.assertEqual(partial_correlations_chunk_flatten.shape, (10, n_chunks))  # Adjust based on your flatten logic
+        self.assertEqual(full_covariances_chunk_flatten.shape, (10, n_chunks))  # Adjust based on your flatten logic
+
+    def test_compute_metrics(self):
+        # Prepare mock data
+        n_edge = 10
+        n_chunks = 5
+        ground_truth_partial_flatten = np.random.rand(n_chunks, n_edge)
+        ground_truth_full_flatten = np.random.rand(n_chunks, n_edge)
+        partial_correlations_chunk_flatten = np.random.rand(n_chunks, n_edge)
+        full_covariances_chunk_flatten = np.random.rand(n_chunks, n_edge)
+
+        # Create an instance of the class
+        pcc = PartialCorrelationCalculation()
+
+        # Call the method
+        metrics, chunk_matrices = pcc.compute_metrics(
+            n_edge,
+            n_chunks,
+            ground_truth_partial_flatten,
+            ground_truth_full_flatten,
+            partial_correlations_chunk_flatten,
+            full_covariances_chunk_flatten
+        )
+
+        # Check the structure of the metrics
+        self.assertIn('accuracy', metrics)
+        self.assertIn('r2', metrics)
+        self.assertEqual(metrics['accuracy']['nm_icov_pm_icov'].shape, (n_chunks, n_edge))
+        self.assertEqual(metrics['r2']['nm_icov_pm_icov'].shape, (n_chunks, n_edge))
+
+    @patch('numpy.save')
+    def test_save_results(self, mock_save):
+        static_dir = '/mock/static/directory'
+        save_dir = '/mock/save/directory'
+        n_chunks = 5
+        partial_correlations_chunk = np.random.rand(n_chunks, 10)
+        full_covariances_chunk = np.random.rand(n_chunks, 10)
+        metrics = {
+            'accuracy': {'nm_icov_pm_icov': np.random.rand(n_chunks, 10)},
+            'r2': {'nm_icov_pm_icov': np.random.rand(n_chunks, 10)},
+        }
+        chunk_matrices = {'nm_icov_pm_icov': ('partial_correlations_chunk', 'ground_truth_matrix_partial_flatten')}
+
+        # Create an instance of the class
+        pcc = PartialCorrelationCalculation()
+
+        # Call the method
+        pcc.save_results(static_dir, save_dir, n_chunks, partial_correlations_chunk, full_covariances_chunk, metrics, chunk_matrices)
+
+        # Ensure save was called with the correct arguments
+        mock_save.assert_any_call(f"{static_dir}/partial_correlations_{n_chunks}_chunks.npy", partial_correlations_chunk)
+        mock_save.assert_any_call(f"{static_dir}/full_covariances_{n_chunks}_chunks.npy", full_covariances_chunk)
 
 
 if __name__ == '__main__':
