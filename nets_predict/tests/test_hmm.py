@@ -76,7 +76,7 @@ class TestFeatureEngineering(unittest.TestCase):
         mock_partial_correlation.return_value.extract_upper_off_main_diag.return_value = np.random.rand(10, 300)
 
         result = self.fe.concatenate_all(icovs, covs, means, trans_prob, fo, intv, lt, sr)
-        expected_shape = (10, 300 + 300 + 25 + 25 + fo.size // 10 * 4)
+        expected_shape = (10, 300 + 325 + 25 + 25 + fo.size // 10 * 4)
         self.assertEqual(result.shape, expected_shape)
 
     # Test for reshape_cov_features
@@ -171,6 +171,59 @@ class TestFeatureEngineering(unittest.TestCase):
         # Test case when n_states is 0 and 'static' is not in features_to_use (should raise ValueError)
         with self.assertRaises(ValueError):
             self.fe.determine_n_features(features_to_use, n_ICs, n_states=0)
+
+    def test_calculate_feature_size_with_diag(self):
+        n_ICs = 4
+        n_states = 3
+        include_diag = True
+
+        # Run the function
+        result = self.fe._calculate_feature_size(n_ICs, n_states, include_diag)
+
+        # n_upper_diag = (n_ICs * (n_ICs + 1)) // 2 = (4 * (4 + 1)) // 2 = 10
+        # Total features = n_states * n_upper_diag = 3 * 10 = 30
+        expected_result = 30
+
+        self.assertEqual(result, expected_result)
+
+    def test_calculate_feature_size_without_diag(self):
+        n_ICs = 4
+        n_states = 3
+        include_diag = False
+
+        # Run the function
+        result = self.fe._calculate_feature_size(n_ICs, n_states, include_diag)
+
+        # n_upper_diag = (n_ICs * (n_ICs - 1)) // 2 = (4 * (4 - 1)) // 2 = 6
+        # Total features = n_states * n_upper_diag = 3 * 6 = 18
+        expected_result = 18
+
+        self.assertEqual(result, expected_result)
+
+
+    def test_tpms_summary_stats_size(self):
+        n_states = 3
+
+        # Run the function
+        result = self.fe._tpms_summary_stats_size(n_ICs=4, n_states=n_states)
+
+        # n_summary_stats = n_states * 4 = 3 * 4 = 12
+        # n_tpms = n_states * n_states = 3 * 3 = 9
+        # Total features = 12 + 9 = 21
+        expected_result = 21
+
+        self.assertEqual(result, expected_result)
+
+    def test_static_feature_size(self):
+        n_ICs = 4
+
+        # Run the function
+        result = self.fe._static_feature_size(n_ICs)
+
+        # n_upper_diag = (n_ICs * (n_ICs - 1)) // 2 = (4 * (4 - 1)) // 2 = 6
+        expected_result = 6
+
+        self.assertEqual(result, expected_result)
 
 if __name__ == '__main__':
     unittest.main()

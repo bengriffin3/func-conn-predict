@@ -4,7 +4,7 @@
 
 import os
 
-def write_job_script(n_ICs, states, run, trans_prob_diag, n_chunks, model_mean, queue="short"):
+def write_job_script(n_ICs, states, run, trans_prob_diag, n_chunks, model_mean, queue="gpu_short"):
     """Create a job script to submit."""
 
     with open("job.sh", "w") as file:
@@ -14,8 +14,8 @@ def write_job_script(n_ICs, states, run, trans_prob_diag, n_chunks, model_mean, 
         file.write(f"#SBATCH -o logs/{name}.out\n")
         file.write(f"#SBATCH -e logs/{name}.err\n")
         file.write(f"#SBATCH -p {queue}\n")
-        file.write("#SBATCH -c 4\n")
-        #file.write("#SBATCH --gres gpu:1\n")
+        #file.write("#SBATCH -c 4\n")
+        file.write("#SBATCH --gres gpu:1\n")
         #file.write("source activate osld\n")
         file.write("source activate venv_nets\n")
         #file.write(f"python ../CH_01b_train_hmm_chunk_group_single_chunk.py {states} {run} {trans_prob_diag} {model_mean} {n_chunks} {chunk} \n")
